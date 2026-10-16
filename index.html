@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="年休メーター" />
+<meta name="theme-color" content="#F2F2F7" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%233CC9A8'/%3E%3Cstop offset='1' stop-color='%231C8FB8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='url(%23g)'/%3E%3Ctext x='32' y='34' font-family='sans-serif' font-size='40' font-weight='bold' fill='white' text-anchor='middle' dominant-baseline='central'%3E%E4%BC%91%3C/text%3E%3C/svg%3E" />
+<title>年休メーター</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #F2F2F7;
+    --card: #FFFFFF;
+    --ink: #1a1a1a;
+    --secondary: rgba(60,60,67,0.6);
+    --tertiary: rgba(60,60,67,0.3);
+    --sep: rgba(60,60,67,0.18);
+    --fill: rgba(118,118,128,0.12);
+    --blue: #007AFF;
+    --red: #FF3B30;
+    --accent: #1B9E8A;
+    --accent-soft: #D7F2EC;
+    --plan: #6FCFBE;
+    --reserve: #C7C7CC;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); }
+  body {
+    font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif;
+    color: var(--ink); font-size: 16px; -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+  }
+  button { font-family: inherit; }
+  #app {
+    height: var(--app-height, 100%);
+    display: flex; flex-direction: column;
+    padding-top: var(--safe-top);
+  }
+  .view { display: none; flex-direction: column; flex: 1; min-height: 0; }
+  .view.active { display: flex; }
+
+  .navbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 8px; min-height: 48px; position: relative;
+    background: rgba(242,242,247,0.92);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    z-index: 10;
+  }
+  .navbar .title {
+    font-size: 17px; font-weight: 600;
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none; white-space: nowrap;
+  }
+  .icon-btn {
+    width: 40px; min-width: 40px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent); background: none; border: 0; cursor: pointer; border-radius: 10px;
+  }
+  .icon-btn:disabled { color: var(--tertiary); }
+  .icon-btn:active { background: var(--fill); }
+
+  .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 16px 24px; }
+
+  .card { background: var(--card); border-radius: 16px; padding: 16px; margin-bottom: 14px; }
+  .section-label { font-size: 13px; color: var(--secondary); margin: 6px 4px 8px; font-weight: 500; }
+
+  /* メーター */
+  .meter-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+  .big { font-size: 52px; font-weight: 800; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .big small { font-size: 18px; font-weight: 600; margin-left: 4px; letter-spacing: 0; }
+  .big-label { font-size: 13px; color: var(--secondary); margin-bottom: 6px; }
+  .of { font-size: 13px; color: var(--secondary); text-align: right; line-height: 1.6; }
+  .pill { display: inline-block; padding: 6px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; margin-top: 14px; }
+  .pill.ok { background: var(--accent-soft); color: #127A6A; }
+  .pill.ng { background: #FFE3E1; color: #D12A20; }
+  .bar { position: relative; height: 18px; border-radius: 9px; background: var(--fill); margin-top: 16px; display: flex; overflow: hidden; }
+  .bar > div { height: 100%; }
+  .seg-used { background: var(--accent); }
+  .seg-plan { background: repeating-linear-gradient(-45deg, var(--plan) 0 5px, #9FE0D4 5px 10px); }
+  .seg-free { background: transparent; }
+  .seg-res { background: repeating-linear-gradient(-45deg, #D1D1D6 0 4px, #E5E5EA 4px 8px); }
+  .seg-over { background: repeating-linear-gradient(-45deg, #FF8A80 0 4px, #FFC2BC 4px 8px); }
+  .target-mark { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); border-radius: 1px; }
+  .legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 12px; }
+  .legend div { font-size: 11px; color: var(--secondary); }
+  .legend b { display: block; font-size: 16px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: 0; }
+
+  /* 今日ボタン */
+  .today-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+  .today-head .t { font-size: 17px; font-weight: 700; }
+  .today-head .d { font-size: 13px; color: var(--secondary); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .big-btn {
+    border: 0; border-radius: 14px; padding: 18px 8px; font-size: 18px; font-weight: 700; cursor: pointer;
+    background: var(--accent); color: #fff; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  }
+  .big-btn small { font-size: 12px; font-weight: 500; opacity: 0.85; }
+  .big-btn.soft { background: var(--accent-soft); color: #127A6A; }
+  .big-btn:active { transform: scale(0.97); }
+  .done-today { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .done-today .msg { font-size: 15px; font-weight: 600; }
+  .done-today .msg span { color: var(--accent); }
+  .link-btn { border: 0; background: none; color: var(--accent); font-size: 15px; font-weight: 600; cursor: pointer; padding: 6px 0; }
+  .link-btn.red { color: var(--red); }
+
+  /* リスト */
+  .list { background: var(--card); border-radius: 16px; overflow: hidden; margin-bottom: 14px; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; min-height: 52px; border-bottom: 0.5px solid var(--sep); cursor: pointer; }
+  .row:last-child { border-bottom: 0; }
+  .row:active { background: var(--fill); }
+  .row .date { font-size: 15px; font-weight: 600; min-width: 92px; font-variant-numeric: tabular-nums; }
+  .row .date small { font-size: 12px; color: var(--secondary); font-weight: 500; margin-left: 2px; }
+  .row .grow { flex: 1; font-size: 13px; color: var(--secondary); }
+  .chip { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+  .chip.plan { background: #E6F7F3; color: #127A6A; border: 1px dashed #6FCFBE; }
+  .chip.done { background: var(--accent); color: #fff; }
+  .chip.extra { background: #FFF1D6; color: #A86400; }
+  .chip.skip { background: var(--fill); color: var(--secondary); text-decoration: line-through; }
+  .chip.wait { background: #FFE3E1; color: #D12A20; }
+  .amt { font-size: 15px; font-weight: 700; min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+  .empty { padding: 20px; text-align: center; color: var(--secondary); font-size: 14px; }
+  .confirm-row { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 0.5px solid var(--sep); }
+  .confirm-row:last-child { border-bottom: 0; }
+  .confirm-row .date { flex: 1; font-size: 15px; font-weight: 600; }
+  .mini { border: 0; border-radius: 9px; padding: 8px 12px; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .mini.go { background: var(--accent); color: #fff; }
+  .mini.no { background: var(--fill); color: var(--secondary); }
+  .add-plan {
+    width: 100%; border: 1.5px dashed var(--plan); background: transparent; color: var(--accent);
+    border-radius: 14px; padding: 14px; font-size: 16px; font-weight: 700; cursor: pointer; margin-bottom: 14px;
+  }
+  .add-plan:active { background: var(--accent-soft); }
+
+  /* 予実表 */
+  table.yj { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  table.yj th { font-size: 12px; color: var(--secondary); font-weight: 500; text-align: right; padding: 0 6px 8px; }
+  table.yj th:first-child { text-align: left; }
+  table.yj td { font-size: 15px; text-align: right; padding: 9px 6px; border-top: 0.5px solid var(--sep); }
+  table.yj td:first-child { text-align: left; font-weight: 600; }
+  table.yj tr.cur td { background: #F0FAF8; }
+  table.yj tr.cur td:first-child { color: var(--accent); }
+  table.yj tr.sum td { font-weight: 800; border-top: 1.5px solid var(--ink); }
+  .dim { color: var(--tertiary); }
+  .plus { color: #A86400; }
+  .minus { color: var(--accent); }
+
+  /* 目安 */
+  table.yj td .now { font-size: 10px; font-weight: 700; color: #fff; background: var(--accent); border-radius: 4px; padding: 1px 4px; margin-left: 4px; vertical-align: 2px; }
+  .ok-mark { color: #127A6A; font-weight: 700; }
+  .ng-mark { color: var(--red); font-weight: 700; }
+  .mid-mark { color: #C27A00; font-weight: 700; }
+  .ok-mark small, .mid-mark small, .ng-mark small { font-size: 12px; font-weight: 500; margin-left: 2px; }
+  table.pace th, table.pace td { padding-left: 3px; padding-right: 3px; }
+  table.pace td.zero { color: var(--secondary); font-size: 14px; }
+  table.pace td:last-child { white-space: nowrap; }
+  .est { color: var(--secondary); }
+  .pace-head { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--secondary); margin-bottom: 10px; line-height: 1.6; }
+  .pace-head b { color: var(--ink); font-size: 15px; }
+
+  /* 設定 */
+  .set-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 0.5px solid var(--sep); min-height: 56px; }
+  .set-row:last-child { border-bottom: 0; }
+  .set-row .lbl { font-size: 15px; }
+  .set-row .lbl small { display: block; font-size: 12px; color: var(--secondary); margin-top: 2px; }
+  .stepper { display: flex; align-items: center; gap: 4px; }
+  .stepper button { width: 36px; height: 34px; border: 0; border-radius: 9px; background: var(--fill); font-size: 20px; color: var(--ink); cursor: pointer; }
+  .stepper button:active { background: rgba(118,118,128,0.24); }
+  .stepper .v { min-width: 58px; text-align: center; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .set-btn { width: 100%; text-align: left; border: 0; background: none; padding: 14px; font-size: 15px; color: var(--accent); cursor: pointer; border-bottom: 0.5px solid var(--sep); }
+  .set-btn:last-child { border-bottom: 0; }
+  .set-btn:active { background: var(--fill); }
+  .note { font-size: 12px; color: var(--secondary); line-height: 1.6; margin: -6px 4px 16px; }
+  #versionLabel { text-align: center; padding: 6px; font-size: 12px; color: var(--tertiary); }
+
+  /* タブバー */
+  .tabbar {
+    display: flex; background: rgba(249,249,249,0.94);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border-top: 0.5px solid var(--sep); padding-bottom: var(--safe-bottom);
+  }
+  .tab { flex: 1; border: 0; background: none; padding: 7px 0 5px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: #999; font-size: 10px; font-weight: 500; cursor: pointer; }
+  .tab.active { color: var(--accent); }
+  .tab svg { width: 26px; height: 26px; }
+
+  /* シート */
+  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.32); opacity: 0; pointer-events: none; transition: opacity 0.25s; z-index: 200; }
+  .backdrop.show { opacity: 1; pointer-events: auto; }
+  .sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 201;
+    background: var(--bg); border-radius: 16px 16px 0 0;
+    padding: 8px 16px calc(var(--safe-bottom) + 20px);
+    transform: translateY(105%); transition: transform 0.32s cubic-bezier(.32,.72,0,1);
+    max-height: 90%; overflow-y: auto;
+  }
+  .sheet.show { transform: translateY(0); }
+  .grabber { width: 36px; height: 5px; border-radius: 3px; background: var(--tertiary); margin: 0 auto 10px; }
+  .sheet h3 { font-size: 17px; font-weight: 700; text-align: center; margin-bottom: 16px; }
+  .field-label { font-size: 13px; color: var(--secondary); margin: 0 4px 6px; }
+  .date-input {
+    width: 100%; font-size: 17px; font-family: inherit; padding: 12px 14px; border: 0; border-radius: 12px;
+    background: var(--card); color: var(--ink); margin-bottom: 16px; -webkit-appearance: none; appearance: none; min-height: 48px;
+  }
+  .seg { display: flex; background: var(--fill); border-radius: 10px; padding: 2px; margin-bottom: 16px; }
+  .seg button { flex: 1; border: 0; background: none; padding: 10px 4px; border-radius: 8px; font-size: 15px; font-weight: 600; color: var(--ink); cursor: pointer; }
+  .seg button.on { background: var(--card); box-shadow: 0 1px 4px rgba(0,0,0,0.12); color: var(--accent); }
+  .seg button:disabled { color: var(--tertiary); }
+  .primary { width: 100%; border: 0; border-radius: 14px; padding: 15px; font-size: 17px; font-weight: 700; background: var(--accent); color: #fff; cursor: pointer; }
+  .primary:active { opacity: 0.85; }
+  .hint { font-size: 12px; color: var(--secondary); text-align: center; margin: -8px 0 14px; }
+  .del-btn { width: 100%; border: 0; border-radius: 14px; padding: 14px; font-size: 16px; font-weight: 600; background: var(--card); color: var(--red); cursor: pointer; margin-top: 4px; }
+
+  /* トースト */
+  #toast {
+    position: fixed; left: 16px; right: 16px; bottom: calc(var(--safe-bottom) + 70px); z-index: 300;
+    background: rgba(30,30,30,0.94); color: #fff; border-radius: 14px; padding: 12px 14px 12px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px;
+    transform: translateY(30px); opacity: 0; pointer-events: none; transition: all 0.25s;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; pointer-events: auto; }
+  #toast button { border: 0; background: none; color: #6FE3CF; font-size: 14px; font-weight: 700; cursor: pointer; padding: 4px; }
+
+  /* 更新バナー */
+  #updateBanner {
+    position: fixed; left: 12px; right: 12px;
+    bottom: calc(var(--safe-bottom) + 16px); z-index: 1000;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: var(--blue); color: #fff; border: 0; border-radius: 14px;
+    padding: 14px 18px; font-family: inherit; font-size: 14px; font-weight: 600;
+    box-shadow: 0 8px 28px rgba(0,122,255,0.4); cursor: pointer;
+    transform: translateY(140%); transition: transform 0.35s cubic-bezier(.32,.72,0,1);
+  }
+  #updateBanner.show { transform: translateY(0); }
+  #updateBanner svg { display: block; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- 年度ナビ（共通） -->
+  <div class="navbar">
+    <button class="icon-btn" id="prevFY" aria-label="前の年度"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <span class="title" id="fyTitle"></span>
+    <button class="icon-btn" id="nextFY" aria-label="次の年度"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>
+  </div>
+
+  <!-- ホーム -->
+  <div id="homeView" class="view active">
+    <div class="scroll" id="homeScroll"></div>
+  </div>
+
+  <!-- 予実 -->
+  <div id="listView" class="view">
+    <div class="scroll" id="listScroll"></div>
+  </div>
+
+  <!-- 目安 -->
+  <div id="paceView" class="view">
+    <div class="scroll" id="paceScroll"></div>
+  </div>
+
+  <!-- 設定 -->
+  <div id="settingsView" class="view">
+    <div class="scroll" id="settingsScroll"></div>
+  </div>
+
+  <nav class="tabbar">
+    <button class="tab active" data-tab="homeView">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0"/><path d="M12 12l5-4"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg>
+      メーター
+    </button>
+    <button class="tab" data-tab="listView">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+      予実
+    </button>
+    <button class="tab" data-tab="paceView">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5v15h16"/><path d="M7 8l4 3 3-2 5 5"/></svg>
+      目安
+    </button>
+    <button class="tab" data-tab="settingsView">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+      設定
+    </button>
+  </nav>
+</div>
+
+<div class="backdrop" id="backdrop"></div>
+<div class="sheet" id="sheet"></div>
+<div id="toast"><span id="toastMsg"></span><button id="toastUndo">取り消す</button></div>
+<input type="file" id="importFile" accept="application/json,.json" style="display:none" />
+
+<script>
+  // ---------- DOM helper ----------
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+  // ---------- IndexedDB ----------
+  // 内部識別子（DB名・スキーマ名）は表示名が変わっても変えない。
+  const DB_NAME = (window.NENKYU_DB_NAME || 'nenkyu-db');
+  const DB_VERSION = 1;
+  // years: { id:'2026', total, target, updatedAt }
+  // entries: { id:'2026-10-17', planAmt:null|0.5|1, actAmt:null|0|0.5|1, updatedAt, deleted? }
+  const STORES = ['years', 'entries'];
+  let _db = null;
+
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        for (const s of STORES) {
+          if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = () => { _db = req.result; resolve(_db); };
+      req.onerror = () => reject(req.error);
+    });
+  }
+  function tx(store, mode = 'readonly') { return _db.transaction(store, mode).objectStore(store); }
+  function getAll(store) {
+    return new Promise((res, rej) => { const r = tx(store).getAll(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  }
+  function put(store, val) {
+    return new Promise((res, rej) => { const r = tx(store, 'readwrite').put(val); r.onsuccess = () => res(); r.onerror = () => rej(r.error); });
+  }
+
+  // ---------- バージョン ----------
+  // リリースのたびに sw.js の CACHE 名とセットで上げる。
+  const APP_VERSION = '1.3.0';
+
+  // ---------- 日付・年度 ----------
+  const pad = (n) => String(n).padStart(2, '0');
+  const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const todayStr = () => ymd(new Date());
+  const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const fyOf = (s) => { const y = +s.slice(0, 4), m = +s.slice(5, 7); return m >= 4 ? y : y - 1; };
+  const WD = ['日', '月', '火', '水', '木', '金', '土'];
+  const md = (s) => { const d = parse(s); return `${d.getMonth() + 1}/${d.getDate()}`; };
+  const wd = (s) => WD[parse(s).getDay()];
+  const fmt = (n) => (Math.round(n * 10) / 10).toString();
+  const amtLabel = (a) => a === 1 ? '全休' : a === 0.5 ? '半休' : '';
+
+  // ---------- 祝日（外部データなし・祝日法ルールで計算） ----------
+  const _holCache = new Map();
+  function nthMonday(y, m, n) { // m: 1-12
+    const first = new Date(y, m - 1, 1).getDay();
+    return 1 + ((8 - first) % 7) + (n - 1) * 7;
+  }
+  function holidaysOf(y) {
+    if (_holCache.has(y)) return _holCache.get(y);
+    const base = new Set();
+    const add = (m, d) => base.add(`${y}-${pad(m)}-${pad(d)}`);
+    const k = y - 1980, q = Math.floor(k / 4);
+    add(1, 1); add(1, nthMonday(y, 1, 2)); add(2, 11);
+    if (y >= 2020) add(2, 23);
+    add(3, Math.floor(20.8431 + 0.242194 * k - q));      // 春分の日
+    add(4, 29); add(5, 3); add(5, 4); add(5, 5);
+    add(7, nthMonday(y, 7, 3)); add(8, 11);
+    add(9, nthMonday(y, 9, 3));
+    add(9, Math.floor(23.2488 + 0.242194 * k - q));      // 秋分の日
+    add(10, nthMonday(y, 10, 2)); add(11, 3); add(11, 23);
+    const all = new Set(base);
+    // 振替休日：日曜の祝日 → 次の祝日でない日
+    for (const s of base) {
+      const d = parse(s);
+      if (d.getDay() !== 0) continue;
+      const n = new Date(d);
+      do { n.setDate(n.getDate() + 1); } while (all.has(ymd(n)));
+      all.add(ymd(n));
+    }
+    // 国民の休日：祝日に挟まれた平日
+    for (const s of base) {
+      const d = parse(s); d.setDate(d.getDate() + 2);
+      const mid = new Date(d); mid.setDate(mid.getDate() - 1);
+      if (base.has(ymd(d)) && !all.has(ymd(mid)) && mid.getDay() !== 0) all.add(ymd(mid));
+    }
+    _holCache.set(y, all);
+    return all;
+  }
+  const isHoliday = (s) => holidaysOf(+s.slice(0, 4)).has(s);
+  const isBizDay = (s) => { const w = parse(s).getDay(); return w !== 0 && w !== 6 && !isHoliday(s); };
+
+  // 年度末（3/31）までの残り営業日。fromStr を含む。
+  function bizDaysBetween(fromStr, toStr) {
+    let n = 0;
+    const d = parse(fromStr), end = parse(toStr);
+    while (d <= end) { if (isBizDay(ymd(d))) n++; d.setDate(d.getDate() + 1); }
+    return n;
+  }
+
+  // ---------- State ----------
+  const state = {
+    years: new Map(),
+    entries: new Map(),
+    fy: fyOf(todayStr()),
+    tab: 'homeView',
+  };
+
+  async function loadAll() {
+    state.years = new Map((await getAll('years')).map((y) => [y.id, y]));
+    state.entries = new Map((await getAll('entries')).map((e) => [e.id, e]));
+  }
+
+  function liveEntries(fy) {
+    return Array.from(state.entries.values())
+      .filter((e) => !e.deleted && fyOf(e.id) === fy && (e.planAmt != null || e.actAmt != null))
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  // 状態: plan(これから) / wait(過ぎたが未確定) / done(予定通り) / extra(予定外) / skip(見送り)
+  function statusOf(e, today = todayStr()) {
+    if (e.actAmt == null) return e.id > today ? 'plan' : 'wait';
+    if (e.actAmt === 0) return 'skip';
+    return e.planAmt != null ? 'done' : 'extra';
+  }
+
+  // ---------- 集計（純粋関数） ----------
+  function calc(fy, yearRec, entries, today = todayStr()) {
+    const total = yearRec ? yearRec.total : 0;
+    const target = yearRec ? yearRec.target : 0;
+    let used = 0, pending = 0, planned = 0;
+    for (const e of entries) {
+      if (e.actAmt != null) used += e.actAmt;
+      else if (e.planAmt != null) pending += e.planAmt;
+      if (e.planAmt != null) planned += e.planAmt;
+    }
+    const remain = total - used;              // 今の残り
+    const projected = total - used - pending; // 予定を全部取った年度末の残り
+    const free = projected - target;          // 目標を守ったうえで、まだ使える日数（負ならオーバー）
+    return { fy, total, target, used, pending, planned, remain, projected, free };
+  }
+
+  function monthly(fy, entries, today = todayStr()) {
+    const rows = [];
+    for (let i = 0; i < 12; i++) {
+      const m = ((3 + i) % 12) + 1;
+      const y = m >= 4 ? fy : fy + 1;
+      const key = `${y}-${pad(m)}`;
+      let plan = 0, act = 0, has = false, rplan = 0;
+      for (const e of entries) {
+        if (e.id.slice(0, 7) !== key) continue;
+        has = true;
+        if (e.planAmt != null) plan += e.planAmt;
+        if (e.actAmt != null) { act += e.actAmt; if (e.planAmt != null) rplan += e.planAmt; }
+      }
+      rows.push({ key, m, plan, act, rplan, has, cur: today.slice(0, 7) === key, past: key < today.slice(0, 7) });
+    }
+    return rows;
+  }
+
+  // ---------- 保存 ----------
+  async function saveEntry(id, patch) {
+    const prev = state.entries.get(id);
+    const next = Object.assign({ id, planAmt: null, actAmt: null }, prev && !prev.deleted ? prev : {}, patch, { updatedAt: Date.now() });
+    next.deleted = next.planAmt == null && next.actAmt == null;
+    state.entries.set(id, next);
+    await put('entries', next);
+    return prev ? Object.assign({}, prev) : null;
+  }
+  async function restoreEntry(id, prevSnapshot) {
+    const rec = prevSnapshot
+      ? Object.assign({}, prevSnapshot, { updatedAt: Date.now() })
+      : { id, planAmt: null, actAmt: null, deleted: true, updatedAt: Date.now() };
+    state.entries.set(id, rec);
+    await put('entries', rec);
+  }
+  async function saveYear(fy, patch) {
+    const id = String(fy);
+    const prev = state.years.get(id) || { id, total: 20, target: 5 };
+    const next = Object.assign({}, prev, patch, { updatedAt: Date.now() });
+    state.years.set(id, next);
+    await put('years', next);
+  }
+
+  // ---------- Render ----------
+  function render() {
+    $('#fyTitle').textContent = `${state.fy}年度`;
+    renderHome();
+    renderList();
+    renderPace();
+    renderSettings();
+  }
+
+  // 共通設定（years ストアに id:'settings' で保存。内部キーは変えない）
+  const DEFAULT_GRANT = 20;
+  const getGrant = () => { const st = state.years.get('settings'); return st && st.grant != null ? st.grant : DEFAULT_GRANT; };
+  async function saveGrant(v) {
+    const next = Object.assign({}, state.years.get('settings') || { id: 'settings' }, { grant: v, updatedAt: Date.now() });
+    state.years.set('settings', next);
+    await put('years', next);
+  }
+
+  // 前年度の残り（実績ベース）と未確定件数
+  function prevYearInfo(fy) {
+    const prev = state.years.get(String(fy - 1));
+    if (!prev) return null;
+    const ents = liveEntries(fy - 1);
+    const used = ents.reduce((a, e) => a + (e.actAmt || 0), 0);
+    const waits = ents.filter((e) => e.actAmt == null).length;
+    return { remain: Math.max(0, prev.total - used), target: prev.target, waits };
+  }
+
+  function setupCardHTML(fy) {
+    const info = prevYearInfo(fy);
+    const grant = getGrant();
+    const t = info ? info.target : 5;
+    const start = (info ? info.remain : 0) + grant;
+    const breakdown = info
+      ? `${fy - 1}年度の残り <b>${fmt(info.remain)}</b> ＋ 付与 <b>${fmt(grant)}</b> ＝ <b>${fmt(start)}</b>日`
+      : `前年度の記録がないので、付与 <b>${fmt(grant)}</b>日から。繰越があれば足してください`;
+    const warn = info && info.waits
+      ? `<div style="font-size:12px;color:#C27A00;margin-top:4px;">${fy - 1}年度に未確定の予定が${info.waits}件あります（残りには含めていません）</div>` : '';
+    return `
+      <div class="card">
+        <div style="font-size:17px;font-weight:700;margin-bottom:6px;">${fy}年度を開始</div>
+        <div style="font-size:13px;color:var(--secondary);line-height:1.6;margin-bottom:12px;">${fy}年4月〜${fy + 1}年3月<br>${breakdown}${warn}</div>
+        <div class="list" style="background:var(--bg);margin-bottom:8px;">
+          ${stepperRow('setupTotal', '年休数', '手で直せます', start)}
+          ${stepperRow('setupTarget', '年度末に残したい', '目標', t)}
+        </div>
+        <div class="hint" style="margin:0 0 12px;">付与日数（${fmt(grant)}日）は設定タブで変えられます</div>
+        <button class="primary" id="setupGo">${fy}年度を開始</button>
+      </div>`;
+  }
+
+  function stepperRow(key, label, sub, val) {
+    return `<div class="set-row"><div class="lbl">${label}<small>${sub}</small></div>
+      <div class="stepper" data-key="${key}">
+        <button data-d="-0.5" aria-label="減らす">−</button>
+        <span class="v" data-v="${val}">${fmt(val)}</span>
+        <button data-d="0.5" aria-label="増やす">＋</button>
+      </div></div>`;
+  }
+
+  function meterHTML(c) {
+    const T = Math.max(c.total, 0.5);
+    const pct = (n) => `${Math.max(0, n) / T * 100}%`;
+    const usedW = Math.min(c.used, c.total);
+    const planW = Math.min(c.pending, Math.max(0, c.total - usedW));
+    const room = Math.max(0, c.total - usedW - planW); // まだ誰にも使われていない
+    const free = Math.max(0, room - c.target);
+    const res = Math.min(room, c.target);
+    const over = Math.max(0, c.target - room);
+    const markLeft = Math.max(0, (c.total - c.target)) / T * 100;
+    const ok = c.free >= 0;
+    const pill = ok
+      ? `<span class="pill ok">あと ${fmt(c.free)}日 使える</span>`
+      : `<span class="pill ng">目標を ${fmt(-c.free)}日 オーバー</span>`;
+    return `
+      <div class="card">
+        <div class="meter-top">
+          <div>
+            <div class="big-label">いまの残り</div>
+            <div class="big">${fmt(c.remain)}<small>日</small></div>
+          </div>
+          <div class="of">年休 ${fmt(c.total)}日<br>目標残 ${fmt(c.target)}日</div>
+        </div>
+        <div class="bar">
+          <div class="seg-used" style="width:${pct(usedW)}"></div>
+          <div class="seg-plan" style="width:${pct(planW)}"></div>
+          <div class="seg-free" style="width:${pct(free)}"></div>
+          <div class="seg-over" style="width:${pct(Math.min(over, c.target))}"></div>
+          <div class="seg-res" style="width:${pct(res)}"></div>
+          ${c.target > 0 ? `<div class="target-mark" style="left:calc(${markLeft}% - 1px)"></div>` : ''}
+        </div>
+        <div class="legend">
+          <div><i style="background:var(--accent)"></i>取得<b>${fmt(c.used)}</b></div>
+          <div><i style="background:var(--plan)"></i>予定<b>${fmt(c.pending)}</b></div>
+          <div><i style="background:var(--fill);border:1px solid var(--sep)"></i>使える<b>${fmt(Math.max(0, c.free))}</b></div>
+          <div><i style="background:#D1D1D6"></i>年度末<b>${fmt(c.projected)}</b></div>
+        </div>
+        ${pill}
+        ${paceHTML(c)}
+      </div>`;
+  }
+
+  // 残り営業日と「何営業日に1回休めるか」
+  function pace(c, today = todayStr()) {
+    const end = `${c.fy + 1}-03-31`;
+    if (today > end) return null; // 過ぎた年度
+    let start = today < `${c.fy}-04-01` ? `${c.fy}-04-01` : today;
+    if (start === today) {
+      const te = state.entries.get(today);
+      if (te && !te.deleted && te.actAmt != null) { const d = parse(today); d.setDate(d.getDate() + 1); start = ymd(d); }
+    }
+    const biz = start > end ? 0 : bizDaysBetween(start, end);
+    const every = c.free > 0 && biz > 0 ? biz / c.free : null;
+    return { biz, every };
+  }
+  function paceHTML(c) {
+    const p = pace(c);
+    if (!p) return '';
+    let main;
+    if (p.every == null) main = c.free > 0 ? '—' : '<span style="color:var(--secondary)">予定以外の余裕なし</span>';
+    else {
+      const n = p.every >= 10 ? Math.round(p.every) : Math.round(p.every * 10) / 10;
+      const wk = p.every / 5;
+      const wkTxt = wk < 1.5 ? '週1回くらい' : wk < 4.5 ? `${Math.round(wk)}週に1回くらい` : (() => { const mo = Math.round(p.every / 21.5 * 2) / 2; return mo <= 1 ? '月1回くらい' : `${mo}か月に1回くらい`; })();
+      main = `<b style="font-size:22px">${n}</b> 営業日に1回 休める <span style="font-size:12px;color:var(--secondary)">（${wkTxt}）</span>`;
+    }
+    return `<div style="margin-top:14px;padding-top:12px;border-top:0.5px solid var(--sep);">
+      <div style="font-size:13px;color:var(--secondary);margin-bottom:2px;">年度末まで 残り <b style="color:var(--ink)">${p.biz}</b> 営業日（土日祝を除く）</div>
+      <div style="font-size:15px;font-weight:600;">${main}</div></div>`;
+  }
+
+  function renderHome() {
+    const el = $('#homeScroll');
+    const fy = state.fy;
+    const yr = state.years.get(String(fy));
+    const today = todayStr();
+    if (!yr) { el.innerHTML = setupCardHTML(fy); bindSteppers(el); bindSetup(el); return; }
+
+    const ents = liveEntries(fy);
+    const c = calc(fy, yr, ents, today);
+    let html = meterHTML(c);
+
+    // 今日（表示中の年度が今年度のときだけ）
+    if (fyOf(today) === fy) {
+      const te = state.entries.get(today);
+      const took = te && !te.deleted && te.actAmt > 0;
+      const d = parse(today);
+      if (took) {
+        html += `<div class="card"><div class="done-today">
+          <div class="msg">今日は <span>${amtLabel(te.actAmt)}</span> で記録済み</div>
+          <button class="link-btn" data-entry="${today}">変更</button></div></div>`;
+      } else {
+        const planNote = te && !te.deleted && te.planAmt ? `（${amtLabel(te.planAmt)}の予定あり）` : '';
+        html += `<div class="card">
+          <div class="today-head"><span class="t">今日、休む</span><span class="d">${d.getMonth() + 1}月${d.getDate()}日（${wd(today)}）${planNote}</span></div>
+          <div class="two">
+            <button class="big-btn soft" data-quick="0.5">半休<small>0.5日</small></button>
+            <button class="big-btn" data-quick="1">全休<small>1日</small></button>
+          </div></div>`;
+      }
+    }
+
+    // 未確定（予定日を過ぎたもの）
+    const waits = ents.filter((e) => statusOf(e, today) === 'wait');
+    if (waits.length) {
+      html += `<div class="section-label">予定日を過ぎた予定 — 取った？</div><div class="list">`;
+      for (const e of waits) {
+        html += `<div class="confirm-row"><div class="date">${md(e.id)}（${wd(e.id)}） <span class="chip plan">${amtLabel(e.planAmt)}</span></div>
+          <button class="mini no" data-skip="${e.id}">取らず</button>
+          <button class="mini go" data-take="${e.id}">取った</button></div>`;
+      }
+      html += `</div>`;
+    }
+
+    // これからの予定
+    const plans = ents.filter((e) => statusOf(e, today) === 'plan');
+    html += `<div class="section-label">これからの予定</div>`;
+    if (plans.length) {
+      html += `<div class="list">` + plans.slice(0, 6).map((e) => rowHTML(e, today)).join('') + `</div>`;
+      if (plans.length > 6) html += `<div class="note">ほか ${plans.length - 6}件は「予実」タブに</div>`;
+    }
+    html += `<button class="add-plan" id="addPlanBtn">＋ 予定を入れる</button>`;
+    el.innerHTML = html;
+  }
+
+  function rowHTML(e, today) {
+    const st = statusOf(e, today);
+    const chip = {
+      plan: `<span class="chip plan">予定</span>`,
+      wait: `<span class="chip wait">未確定</span>`,
+      done: `<span class="chip done">取得</span>`,
+      extra: `<span class="chip extra">予定外</span>`,
+      skip: `<span class="chip skip">見送り</span>`,
+    }[st];
+    let detail = '';
+    if (st === 'done' && e.planAmt !== e.actAmt) detail = `予定 ${amtLabel(e.planAmt)} → ${amtLabel(e.actAmt)}`;
+    if (st === 'skip') detail = `予定 ${amtLabel(e.planAmt)}`;
+    const amt = st === 'skip' ? '0' : fmt(e.actAmt != null ? e.actAmt : e.planAmt);
+    return `<div class="row" data-entry="${e.id}">
+      <span class="date">${md(e.id)}<small>（${wd(e.id)}）</small></span>
+      ${chip}<span class="grow">${detail}</span>
+      <span class="amt">${amt}</span></div>`;
+  }
+
+  function renderList() {
+    const el = $('#listScroll');
+    const fy = state.fy;
+    const yr = state.years.get(String(fy));
+    const today = todayStr();
+    const ents = liveEntries(fy);
+    const rows = monthly(fy, ents, today);
+    let sp = 0, sa = 0;
+    let html = `<div class="section-label">月別の予実</div><div class="card" style="padding:12px 10px 4px;"><table class="yj">
+      <tr><th>月</th><th>予定</th><th>実績</th><th>差</th></tr>`;
+    for (const r of rows) {
+      sp += r.plan; sa += r.act;
+      const diff = r.act - r.rplan;
+      const showDiff = r.has && (r.past || r.cur);
+      const diffTxt = !showDiff ? '<span class="dim">–</span>'
+        : diff === 0 ? '0' : diff > 0 ? `<span class="plus">+${fmt(diff)}</span>` : `<span class="minus">${fmt(diff)}</span>`;
+      html += `<tr class="${r.cur ? 'cur' : ''}"><td>${r.m}月</td>
+        <td>${r.plan ? fmt(r.plan) : '<span class="dim">–</span>'}</td>
+        <td>${r.act ? fmt(r.act) : '<span class="dim">–</span>'}</td>
+        <td>${diffTxt}</td></tr>`;
+    }
+    html += `<tr class="sum"><td>計</td><td>${fmt(sp)}</td><td>${fmt(sa)}</td><td></td></tr></table></div>`;
+    html += `<div class="note">予定＝予定として入れた日数／実績＝実際に取った日数。差は確定した分だけで計算：＋は予定外に多く休んだ分、−は予定より少なかった分。</div>`;
+
+    html += `<div class="section-label">すべての記録</div>`;
+    if (!ents.length) {
+      html += `<div class="list"><div class="empty">${yr ? 'まだ記録がありません' : 'この年度はまだ未設定です'}</div></div>`;
+    } else {
+      // 月ごとに区切る
+      let cur = '';
+      for (const e of ents) {
+        const k = e.id.slice(0, 7);
+        if (k !== cur) {
+          if (cur) html += `</div>`;
+          html += `<div class="section-label" style="margin-top:2px">${+k.slice(5)}月</div><div class="list">`;
+          cur = k;
+        }
+        html += rowHTML(e, today);
+      }
+      html += `</div>`;
+    }
+    html += `<button class="add-plan" id="addPlanBtn2">＋ 予定・記録を入れる</button>`;
+    el.innerHTML = html;
+  }
+
+  // 月末ごとの目安残：使っていい日数（年休−目標）を営業日の経過に比例して配分
+  function paceRows(fy, yr, entries, today = todayStr()) {
+    const total = yr.total, target = yr.target;
+    const usable = Math.max(0, total - target);
+    const fyStart = `${fy}-04-01`, fyEnd = `${fy + 1}-03-31`;
+    const allBiz = bizDaysBetween(fyStart, fyEnd) || 1;
+    const rows = [];
+    for (let i = 0; i < 12; i++) {
+      const m = ((3 + i) % 12) + 1;
+      const y = m >= 4 ? fy : fy + 1;
+      const last = new Date(y, m, 0).getDate();
+      const end = `${y}-${pad(m)}-${pad(last)}`;
+      const biz = bizDaysBetween(fyStart, end);
+      const guide = Math.round((total - usable * biz / allBiz) * 2) / 2; // 0.5刻み
+      const zero = Math.round((total - total * biz / allBiz) * 2) / 2;    // 年度末にちょうど0になる線
+      let used = 0, pend = 0;
+      for (const e of entries) {
+        if (e.id > end) continue;
+        if (e.actAmt != null) used += e.actAmt;
+        else if (e.planAmt != null) pend += e.planAmt;
+      }
+      const ym = `${y}-${pad(m)}`;
+      const kind = ym < today.slice(0, 7) ? 'past' : ym === today.slice(0, 7) ? 'cur' : 'future';
+      const val = kind === 'past' ? total - used : total - used - pend; // 今月以降は予定込みの見込み
+      rows.push({ m, end, guide, zero, val, kind, diff: val - guide });
+    }
+    return rows;
+  }
+
+  function renderPace() {
+    const el = $('#paceScroll');
+    const fy = state.fy;
+    const yr = state.years.get(String(fy));
+    if (!yr) { el.innerHTML = `<div class="list"><div class="empty">この年度はまだ未設定です</div></div>`; return; }
+    const today = todayStr();
+    const rows = paceRows(fy, yr, liveEntries(fy), today);
+    let html = `<div class="card" style="padding:14px 10px 4px;">
+      <div class="pace-head" style="padding:0 6px;"><div>年休 <b>${fmt(yr.total)}</b> → 年度末 <b>${fmt(yr.target)}</b> 残し</div><div>使える <b>${fmt(Math.max(0, yr.total - yr.target))}</b> 日</div></div>
+      <table class="yj pace"><tr><th>月末</th><th>目標残し</th><th>使い切り</th><th>残数</th><th>判定</th></tr>`;
+    for (const r of rows) {
+      const valTxt = r.kind === 'past' ? fmt(r.val) : r.kind === 'cur' ? `${fmt(r.val)}<span class="now">見込</span>` : `<span class="est">${fmt(r.val)}</span>`;
+      const judge = r.diff >= 0
+        ? `<span class="ok-mark">○${r.diff > 0 ? `<small>+${fmt(r.diff)}</small>` : ''}</span>`
+        : r.val >= r.zero
+          ? `<span class="mid-mark">△<small>${fmt(r.diff)}</small></span>`
+          : `<span class="ng-mark">✕<small>${fmt(r.val - r.zero)}</small></span>`;
+      html += `<tr class="${r.kind === 'cur' ? 'cur' : ''}"><td>${r.m}月</td><td><b>${fmt(r.guide)}</b></td><td class="zero">${fmt(r.zero)}</td><td>${valTxt}</td><td>${judge}</td></tr>`;
+    }
+    html += `</table></div>
+      <div class="note">目標残し＝この残数以上あれば、年度末に目標が残るペース。使い切り＝年度末にちょうど0日になるペース。どちらも土日祝を除いた営業日の経過に合わせて割り振っています（0.5日刻み）。<br>判定：○ 目標ペース以上／△ 目標には足りないが使い切りペースより上（数字は目標との差）／✕ 使い切りペースより速い（数字は使い切り線との差）。<br>残数：過ぎた月は実際の月末残、今月以降は入っている予定を取った場合の見込み（グレー）。</div>`;
+    el.innerHTML = html;
+  }
+
+  function renderSettings() {
+    const el = $('#settingsScroll');
+    const fy = state.fy;
+    const yr = state.years.get(String(fy));
+    let html = `<div class="section-label">${fy}年度（${fy}/4〜${fy + 1}/3）</div>`;
+    if (yr) {
+      html += `<div class="list">
+        ${stepperRow('total', '年休数', '付与＋繰越', yr.total)}
+        ${stepperRow('target', '年度末に残したい', '目標', yr.target)}
+      </div><div class="note">0.5日単位。年度は上の ‹ › で切り替えます。</div>`;
+    } else {
+      html += setupCardHTML(fy);
+    }
+    html += `<div class="section-label">年度の開始</div><div class="list">
+        ${stepperRow('grant', '毎年の付与日数', '開始時に前年度の残りに足す', getGrant())}
+      </div><div class="note">新しい年度を開くと「前年度の残り＋付与日数」が年休数の初期値になります。開始前に手で直せます。</div>`;
+    html += `<div class="section-label">バックアップ</div><div class="list">
+      <button class="set-btn" id="exportBtn">JSONに書き出す</button>
+      <button class="set-btn" id="importBtn">JSONから取り込む</button>
+    </div><div class="note">iCloud Driveに保存しておけば、機種変更や別端末への移行に使えます。取り込みは日付ごとに新しい方を残します。</div>
+    <div id="versionLabel">v${APP_VERSION}</div>`;
+    el.innerHTML = html;
+    bindSteppers(el, async (key, val) => {
+      if (key === 'total' || key === 'target') { await saveYear(fy, { [key]: val }); renderHome(); renderPace(); }
+      if (key === 'grant') { await saveGrant(val); renderHome(); renderSettings(); }
+    });
+    bindSetup(el);
+  }
+
+  // ---------- ステッパー ----------
+  function bindSteppers(root, onChange) {
+    root.querySelectorAll('.stepper').forEach((s) => {
+      const v = s.querySelector('.v');
+      s.querySelectorAll('button').forEach((b) => {
+        b.addEventListener('click', async () => {
+          let n = Number(v.dataset.v) + Number(b.dataset.d);
+          n = Math.max(0, Math.min(99, Math.round(n * 2) / 2));
+          v.dataset.v = n; v.textContent = fmt(n);
+          if (onChange) await onChange(s.dataset.key, n);
+        });
+      });
+    });
+  }
+  function bindSetup(root) {
+    const go = root.querySelector('#setupGo');
+    if (!go) return;
+    go.addEventListener('click', async () => {
+      const total = Number(root.querySelector('[data-key="setupTotal"] .v').dataset.v);
+      const target = Number(root.querySelector('[data-key="setupTarget"] .v').dataset.v);
+      await saveYear(state.fy, { total, target });
+      render();
+      toast(`${state.fy}年度を開始しました`);
+    });
+  }
+
+  // ---------- 操作（イベント委譲） ----------
+  document.addEventListener('click', async (ev) => {
+    const t = ev.target.closest('[data-quick],[data-take],[data-skip],[data-entry],#addPlanBtn,#addPlanBtn2,#exportBtn,#importBtn,.tab');
+    if (!t) return;
+    if (t.classList.contains('tab')) return switchTab(t.dataset.tab);
+    if (t.dataset.quick) {
+      const amt = Number(t.dataset.quick);
+      const id = todayStr();
+      const prev = await saveEntry(id, { actAmt: amt });
+      render();
+      toast(`今日を${amtLabel(amt)}で記録しました`, async () => { await restoreEntry(id, prev); render(); });
+      return;
+    }
+    if (t.dataset.take) {
+      const id = t.dataset.take; const e = state.entries.get(id);
+      const prev = await saveEntry(id, { actAmt: e.planAmt });
+      render();
+      toast(`${md(id)} を取得にしました`, async () => { await restoreEntry(id, prev); render(); });
+      return;
+    }
+    if (t.dataset.skip) {
+      const id = t.dataset.skip;
+      const prev = await saveEntry(id, { actAmt: 0 });
+      render();
+      toast(`${md(id)} は見送りにしました`, async () => { await restoreEntry(id, prev); render(); });
+      return;
+    }
+    if (t.dataset.entry) return openEditSheet(t.dataset.entry);
+    if (t.id === 'addPlanBtn' || t.id === 'addPlanBtn2') return openAddSheet();
+    if (t.id === 'exportBtn') return exportData();
+    if (t.id === 'importBtn') return $('#importFile').click();
+  });
+
+  function switchTab(id) {
+    state.tab = id;
+    $$('.view').forEach((v) => v.classList.toggle('active', v.id === id));
+    $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === id));
+    const sc = document.querySelector(`#${id} .scroll`); if (sc) sc.scrollTop = 0;
+  }
+
+  $('#prevFY').addEventListener('click', () => { state.fy--; render(); });
+  $('#nextFY').addEventListener('click', () => { state.fy++; render(); });
+
+  // ---------- シート ----------
+  function openSheet(html) {
+    $('#sheet').innerHTML = `<div class="grabber"></div>` + html;
+    $('#backdrop').classList.add('show');
+    $('#sheet').classList.add('show');
+  }
+  function closeSheet() {
+    $('#backdrop').classList.remove('show');
+    $('#sheet').classList.remove('show');
+  }
+  $('#backdrop').addEventListener('click', closeSheet);
+
+  function defaultPlanDate() {
+    // 表示中の年度の範囲で、明日（年度外ならその年度の4/1）
+    const d = new Date(); d.setDate(d.getDate() + 1);
+    let s = ymd(d);
+    if (fyOf(s) !== state.fy) s = s < `${state.fy}-04-01` ? `${state.fy}-04-01` : `${state.fy + 1}-03-31`;
+    return s;
+  }
+
+  function openAddSheet() {
+    let amt = 1;
+    const init = defaultPlanDate();
+    openSheet(`
+      <h3>予定を入れる</h3>
+      <div class="field-label">日付</div>
+      <input type="date" class="date-input" id="addDate" value="${init}" />
+      <div class="seg" id="addAmt"><button data-a="0.5">半休</button><button data-a="1" class="on">全休</button></div>
+      <div class="hint" id="addHint"></div>
+      <button class="primary" id="addGo">追加</button>`);
+    const dateEl = $('#addDate');
+    const upd = () => {
+      const s = dateEl.value;
+      const today = todayStr();
+      const ex = s && state.entries.get(s);
+      let hint = '';
+      if (!s) hint = '日付を選んでください';
+      else if (s <= today) hint = '今日以前の日付は「取得済み（予定外）」として記録します';
+      else hint = `${fyOf(s)}年度の予定として入れます`;
+      if (s && !isBizDay(s)) hint = `${isHoliday(s) ? '祝日' : '土日'}です。営業日ではありませんが、記録はできます`;
+      if (ex && !ex.deleted) hint = `この日はすでに記録があります。上書きします`;
+      $('#addHint').textContent = hint;
+      $('#addGo').textContent = s && s <= today ? '記録する' : '追加';
+    };
+    dateEl.addEventListener('change', upd); dateEl.addEventListener('input', upd); upd();
+    $('#addAmt').addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      amt = Number(b.dataset.a);
+      $$('#addAmt button').forEach((x) => x.classList.toggle('on', x === b));
+    });
+    $('#addGo').addEventListener('click', async () => {
+      const s = dateEl.value; if (!s) return;
+      const isPast = s <= todayStr();
+      const prev = await saveEntry(s, isPast ? { actAmt: amt } : { planAmt: amt });
+      closeSheet();
+      state.fy = fyOf(s);
+      render();
+      toast(`${md(s)} を${amtLabel(amt)}で${isPast ? '記録' : '予定'}しました`, async () => { await restoreEntry(s, prev); render(); });
+    });
+  }
+
+  function openEditSheet(id) {
+    const today = todayStr();
+    const canAct = id <= today;
+    const base = state.entries.get(id) || { id, planAmt: null, actAmt: null };
+    let plan = base.deleted ? null : base.planAmt;
+    let act = base.deleted ? null : base.actAmt;
+    const segBtn = (grp, v, label, cur, dis) => `<button data-g="${grp}" data-v="${v}" class="${String(cur) === String(v) ? 'on' : ''}" ${dis ? 'disabled' : ''}>${label}</button>`;
+    const draw = () => {
+      openSheet(`
+        <h3>${md(id)}（${wd(id)}）</h3>
+        <div class="field-label">予定</div>
+        <div class="seg">${segBtn('p', 'null', 'なし', plan)}${segBtn('p', 0.5, '半休', plan)}${segBtn('p', 1, '全休', plan)}</div>
+        <div class="field-label">実績${canAct ? '' : '（当日になったら入れられます）'}</div>
+        <div class="seg">${segBtn('a', 'null', 'まだ', act, !canAct)}${segBtn('a', 0, '取らず', act, !canAct || plan == null)}${segBtn('a', 0.5, '半休', act, !canAct)}${segBtn('a', 1, '全休', act, !canAct)}</div>
+        <button class="primary" id="editGo">保存</button>
+        <button class="del-btn" id="editDel">この日の記録を削除</button>`);
+      $('#sheet').querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => {
+        const v = b.dataset.v === 'null' ? null : Number(b.dataset.v);
+        if (b.dataset.g === 'p') { plan = v; if (plan == null && act === 0) act = null; }
+        else act = v;
+        draw();
+      }));
+      $('#editGo').addEventListener('click', async () => {
+        const prev = await saveEntry(id, { planAmt: plan, actAmt: act });
+        closeSheet(); render();
+        toast(plan == null && act == null ? `${md(id)} の記録を消しました` : `${md(id)} を更新しました`, async () => { await restoreEntry(id, prev); render(); });
+      });
+      $('#editDel').addEventListener('click', async () => {
+        const prev = await saveEntry(id, { planAmt: null, actAmt: null });
+        closeSheet(); render();
+        toast(`${md(id)} の記録を消しました`, async () => { await restoreEntry(id, prev); render(); });
+      });
+    };
+    draw();
+    // 再描画のたびに開き直すが、アニメは維持される
+  }
+
+  // ---------- トースト（取り消し付き） ----------
+  let toastTimer = null, toastUndoFn = null;
+  function toast(msg, undoFn) {
+    $('#toastMsg').textContent = msg;
+    toastUndoFn = undoFn || null;
+    $('#toastUndo').style.display = undoFn ? '' : 'none';
+    $('#toast').classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => $('#toast').classList.remove('show'), 4000);
+  }
+  $('#toastUndo').addEventListener('click', async () => {
+    const fn = toastUndoFn; toastUndoFn = null;
+    $('#toast').classList.remove('show');
+    if (fn) { await fn(); toast('取り消しました'); }
+  });
+
+  // ---------- JSON 書き出し/取り込み（スマートマージ） ----------
+  const SCHEMA = 'nenkyu.v1';
+  async function exportData() {
+    const data = {
+      schema: SCHEMA, exportedAt: new Date().toISOString(),
+      years: Array.from(state.years.values()),
+      entries: Array.from(state.entries.values()),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `nenkyu-${todayStr()}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('書き出しました');
+  }
+  async function importData(file) {
+    let data;
+    try { data = JSON.parse(await file.text()); } catch (e) { toast('読み込めないファイルです'); return; }
+    if (data.schema !== SCHEMA) { toast('年休メーターのファイルではありません'); return; }
+    let n = 0;
+    for (const [store, map] of [['years', state.years], ['entries', state.entries]]) {
+      for (const it of (data[store] || [])) {
+        const local = map.get(it.id);
+        if (!local || (it.updatedAt || 0) > (local.updatedAt || 0)) { await put(store, it); n++; }
+      }
+    }
+    await loadAll(); render();
+    toast(`${n}件を取り込みました`);
+  }
+  $('#importFile').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; e.target.value = '';
+    if (f) await importData(f);
+  });
+
+  // ---------- 起動 ----------
+  (async function init() {
+    setupViewportTracking();
+    await openDB();
+    if (window.NENKYU_SEED) await window.NENKYU_SEED({ put, ymd, todayStr });
+    await loadAll();
+    render();
+    // 日付が変わったら（翌朝アプリに戻ったとき）描き直す
+    let lastDay = todayStr();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && todayStr() !== lastDay) {
+        lastDay = todayStr(); render();
+      }
+    });
+    window.__nenkyu = { switchTab, openAddSheet, openEditSheet, closeSheet, render, state };
+  })();
+
+  // ---------- visualViewport（キーボード対策） ----------
+  function setupViewportTracking() {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement;
+    function apply() { root.style.setProperty('--app-height', vv.height + 'px'); }
+    vv.addEventListener('resize', apply);
+    apply();
+  }
+
+  // ---------- Service Worker + 自動アップデート ----------
+  if ('serviceWorker' in navigator && !window.NENKYU_SEED) {
+    window.addEventListener('load', async () => {
+      try {
+        const swUrl = new URL('sw.js', location.href).href;
+        const res = await fetch(swUrl, { method: 'HEAD' });
+        if (!res.ok) return;
+        const reg = await navigator.serviceWorker.register('sw.js');
+        if (reg.waiting && navigator.serviceWorker.controller) showUpdateBanner(reg.waiting);
+        reg.addEventListener('updatefound', () => {
+          const sw = reg.installing;
+          if (!sw) return;
+          sw.addEventListener('statechange', () => {
+            if (sw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner(sw);
+          });
+        });
+        reg.update();
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update(); });
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (refreshing) return; refreshing = true; window.location.reload();
+        });
+      } catch (e) {}
+    });
+  }
+  function showUpdateBanner(waitingSW) {
+    if (document.getElementById('updateBanner')) return;
+    const b = document.createElement('button');
+    b.id = 'updateBanner';
+    b.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg><span>新しいバージョンがあります — タップで更新</span>';
+    b.addEventListener('click', () => {
+      b.disabled = true; b.querySelector('span').textContent = '更新中…';
+      waitingSW.postMessage('SKIP_WAITING');
+    });
+    document.body.appendChild(b);
+    requestAnimationFrame(() => b.classList.add('show'));
+  }
+</script>
+</body>
+</html>
