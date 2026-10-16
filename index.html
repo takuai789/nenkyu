@@ -164,7 +164,10 @@
   .ok-mark small, .mid-mark small, .ng-mark small { font-size: 12px; font-weight: 500; margin-left: 2px; }
   table.pace th, table.pace td { padding-left: 3px; padding-right: 3px; }
   table.pace td.zero { color: var(--secondary); font-size: 14px; }
-  table.pace td:last-child { white-space: nowrap; }
+  table.pace td { white-space: nowrap; }
+  table.pace tr[data-month] { cursor: pointer; }
+  table.pace tr[data-month]:active td { background: var(--fill); }
+  table.pace .wp { color: #127A6A; }
   .est { color: var(--secondary); }
   .pace-head { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--secondary); margin-bottom: 10px; line-height: 1.6; }
   .pace-head b { color: var(--ink); font-size: 15px; }
@@ -259,14 +262,14 @@
     <div class="scroll" id="homeScroll"></div>
   </div>
 
-  <!-- 予実 -->
-  <div id="listView" class="view">
-    <div class="scroll" id="listScroll"></div>
+  <!-- 目安：目標残し -->
+  <div id="goalView" class="view">
+    <div class="scroll" id="goalScroll"></div>
   </div>
 
-  <!-- 目安 -->
-  <div id="paceView" class="view">
-    <div class="scroll" id="paceScroll"></div>
+  <!-- 目安：使い切り -->
+  <div id="zeroView" class="view">
+    <div class="scroll" id="zeroScroll"></div>
   </div>
 
   <!-- 設定 -->
@@ -279,13 +282,13 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0"/><path d="M12 12l5-4"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg>
       メーター
     </button>
-    <button class="tab" data-tab="listView">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
-      予実
+    <button class="tab" data-tab="goalView">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
+      目標残し
     </button>
-    <button class="tab" data-tab="paceView">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5v15h16"/><path d="M7 8l4 3 3-2 5 5"/></svg>
-      目安
+    <button class="tab" data-tab="zeroView">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="16" height="10" rx="2.5"/><path d="M21 10.5v3"/><path d="M8 12h6" opacity=".5"/></svg>
+      使い切り
     </button>
     <button class="tab" data-tab="settingsView">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
@@ -336,7 +339,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.3.0';
+  const APP_VERSION = '1.5.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -486,8 +489,8 @@
   function render() {
     $('#fyTitle').textContent = `${state.fy}年度`;
     renderHome();
-    renderList();
-    renderPace();
+    renderPace('goal');
+    renderPace('zero');
     renderSettings();
   }
 
@@ -686,51 +689,6 @@
       <span class="amt">${amt}</span></div>`;
   }
 
-  function renderList() {
-    const el = $('#listScroll');
-    const fy = state.fy;
-    const yr = state.years.get(String(fy));
-    const today = todayStr();
-    const ents = liveEntries(fy);
-    const rows = monthly(fy, ents, today);
-    let sp = 0, sa = 0;
-    let html = `<div class="section-label">月別の予実</div><div class="card" style="padding:12px 10px 4px;"><table class="yj">
-      <tr><th>月</th><th>予定</th><th>実績</th><th>差</th></tr>`;
-    for (const r of rows) {
-      sp += r.plan; sa += r.act;
-      const diff = r.act - r.rplan;
-      const showDiff = r.has && (r.past || r.cur);
-      const diffTxt = !showDiff ? '<span class="dim">–</span>'
-        : diff === 0 ? '0' : diff > 0 ? `<span class="plus">+${fmt(diff)}</span>` : `<span class="minus">${fmt(diff)}</span>`;
-      html += `<tr class="${r.cur ? 'cur' : ''}"><td>${r.m}月</td>
-        <td>${r.plan ? fmt(r.plan) : '<span class="dim">–</span>'}</td>
-        <td>${r.act ? fmt(r.act) : '<span class="dim">–</span>'}</td>
-        <td>${diffTxt}</td></tr>`;
-    }
-    html += `<tr class="sum"><td>計</td><td>${fmt(sp)}</td><td>${fmt(sa)}</td><td></td></tr></table></div>`;
-    html += `<div class="note">予定＝予定として入れた日数／実績＝実際に取った日数。差は確定した分だけで計算：＋は予定外に多く休んだ分、−は予定より少なかった分。</div>`;
-
-    html += `<div class="section-label">すべての記録</div>`;
-    if (!ents.length) {
-      html += `<div class="list"><div class="empty">${yr ? 'まだ記録がありません' : 'この年度はまだ未設定です'}</div></div>`;
-    } else {
-      // 月ごとに区切る
-      let cur = '';
-      for (const e of ents) {
-        const k = e.id.slice(0, 7);
-        if (k !== cur) {
-          if (cur) html += `</div>`;
-          html += `<div class="section-label" style="margin-top:2px">${+k.slice(5)}月</div><div class="list">`;
-          cur = k;
-        }
-        html += rowHTML(e, today);
-      }
-      html += `</div>`;
-    }
-    html += `<button class="add-plan" id="addPlanBtn2">＋ 予定・記録を入れる</button>`;
-    el.innerHTML = html;
-  }
-
   // 月末ごとの目安残：使っていい日数（年休−目標）を営業日の経過に比例して配分
   function paceRows(fy, yr, entries, today = todayStr()) {
     const total = yr.total, target = yr.target;
@@ -754,34 +712,49 @@
       }
       const ym = `${y}-${pad(m)}`;
       const kind = ym < today.slice(0, 7) ? 'past' : ym === today.slice(0, 7) ? 'cur' : 'future';
-      const val = kind === 'past' ? total - used : total - used - pend; // 今月以降は予定込みの見込み
-      rows.push({ m, end, guide, zero, val, kind, diff: val - guide });
+      // 実績残：その月末時点で実際に残っている日数（今月は今日時点、来月以降は未来なので出さない）
+      const act = kind === 'future' ? null : total - used;
+      // 予定込み：入っている予定を全部取った場合の、その月末の残数（今月以降）
+      const withPlan = kind === 'past' ? null : total - used - pend;
+      rows.push({ m, end, guide, zero, act, withPlan, kind });
     }
     return rows;
   }
 
-  function renderPace() {
-    const el = $('#paceScroll');
+  function renderPace(mode) {
+    const el = $(mode === 'goal' ? '#goalScroll' : '#zeroScroll');
     const fy = state.fy;
     const yr = state.years.get(String(fy));
     if (!yr) { el.innerHTML = `<div class="list"><div class="empty">この年度はまだ未設定です</div></div>`; return; }
     const today = todayStr();
     const rows = paceRows(fy, yr, liveEntries(fy), today);
-    let html = `<div class="card" style="padding:14px 10px 4px;">
-      <div class="pace-head" style="padding:0 6px;"><div>年休 <b>${fmt(yr.total)}</b> → 年度末 <b>${fmt(yr.target)}</b> 残し</div><div>使える <b>${fmt(Math.max(0, yr.total - yr.target))}</b> 日</div></div>
-      <table class="yj pace"><tr><th>月末</th><th>目標残し</th><th>使い切り</th><th>残数</th><th>判定</th></tr>`;
+    const goal = mode === 'goal';
+    const head = goal
+      ? `<div>年休 <b>${fmt(yr.total)}</b> → 年度末 <b>${fmt(yr.target)}</b> 残す</div><div>使える <b>${fmt(Math.max(0, yr.total - yr.target))}</b> 日</div>`
+      : `<div>年休 <b>${fmt(yr.total)}</b> → 年度末 <b>0</b> 使い切る</div><div>使える <b>${fmt(yr.total)}</b> 日</div>`;
+    let html = `<div class="section-label">${goal ? '年度末に目標を残すペース' : '年度末にちょうど0になるペース'}</div>
+      <div class="card" style="padding:14px 10px 4px;">
+      <div class="pace-head" style="padding:0 6px;">${head}</div>
+      <table class="yj pace"><tr><th>月末</th><th>目安残</th><th>実績残</th><th>予定込み</th></tr>`;
+    const dash = '<span class="dim">–</span>';
     for (const r of rows) {
-      const valTxt = r.kind === 'past' ? fmt(r.val) : r.kind === 'cur' ? `${fmt(r.val)}<span class="now">見込</span>` : `<span class="est">${fmt(r.val)}</span>`;
-      const judge = r.diff >= 0
-        ? `<span class="ok-mark">○${r.diff > 0 ? `<small>+${fmt(r.diff)}</small>` : ''}</span>`
-        : r.val >= r.zero
-          ? `<span class="mid-mark">△<small>${fmt(r.diff)}</small></span>`
-          : `<span class="ng-mark">✕<small>${fmt(r.val - r.zero)}</small></span>`;
-      html += `<tr class="${r.kind === 'cur' ? 'cur' : ''}"><td>${r.m}月</td><td><b>${fmt(r.guide)}</b></td><td class="zero">${fmt(r.zero)}</td><td>${valTxt}</td><td>${judge}</td></tr>`;
+      const line = goal ? r.guide : r.zero;
+      const actTxt = r.act == null ? dash : r.kind === 'cur' ? `${fmt(r.act)}<span class="now">今</span>` : fmt(r.act);
+      const planTxt = r.withPlan == null ? dash : `<b class="wp">${fmt(r.withPlan)}</b>`;
+      html += `<tr class="${r.kind === 'cur' ? 'cur' : ''}" data-month="${r.end.slice(0, 7)}"><td>${r.m}月</td><td><b>${fmt(line)}</b></td><td>${actTxt}</td><td>${planTxt}</td></tr>`;
     }
     html += `</table></div>
-      <div class="note">目標残し＝この残数以上あれば、年度末に目標が残るペース。使い切り＝年度末にちょうど0日になるペース。どちらも土日祝を除いた営業日の経過に合わせて割り振っています（0.5日刻み）。<br>判定：○ 目標ペース以上／△ 目標には足りないが使い切りペースより上（数字は目標との差）／✕ 使い切りペースより速い（数字は使い切り線との差）。<br>残数：過ぎた月は実際の月末残、今月以降は入っている予定を取った場合の見込み（グレー）。</div>`;
+      <div class="note">目安残＝${goal ? `この残数以上あれば、年度末に目標の${fmt(yr.target)}日が残るペース` : 'この残数なら、年度末にちょうど0日になるペース'}。土日祝を除いた営業日の経過に合わせて割り振っています（0.5日刻み）。<br>実績残：過ぎた月は実際の月末の残り、今月は今日時点の残り。<br>予定込み：入っている予定を全部取った場合の、その月末の残り（今月以降）。<br>月をタップすると、その月の記録を見たり直したりできます。</div>`;
     el.innerHTML = html;
+  }
+
+  // 月の記録シート（目安表の月をタップ）
+  function openMonthSheet(ym) {
+    const today = todayStr();
+    const ents = liveEntries(fyOf(ym + '-01')).filter((e) => e.id.slice(0, 7) === ym);
+    openSheet(`<h3>${+ym.slice(5)}月の記録</h3>
+      <div class="list">${ents.length ? ents.map((e) => rowHTML(e, today)).join('') : '<div class="empty">記録はありません</div>'}</div>
+      <button class="add-plan" id="addPlanBtn2" style="margin-bottom:0">＋ 予定・記録を入れる</button>`);
   }
 
   function renderSettings() {
@@ -807,7 +780,7 @@
     <div id="versionLabel">v${APP_VERSION}</div>`;
     el.innerHTML = html;
     bindSteppers(el, async (key, val) => {
-      if (key === 'total' || key === 'target') { await saveYear(fy, { [key]: val }); renderHome(); renderPace(); }
+      if (key === 'total' || key === 'target') { await saveYear(fy, { [key]: val }); renderHome(); renderPace('goal'); renderPace('zero'); }
       if (key === 'grant') { await saveGrant(val); renderHome(); renderSettings(); }
     });
     bindSetup(el);
@@ -841,7 +814,7 @@
 
   // ---------- 操作（イベント委譲） ----------
   document.addEventListener('click', async (ev) => {
-    const t = ev.target.closest('[data-quick],[data-take],[data-skip],[data-entry],#addPlanBtn,#addPlanBtn2,#exportBtn,#importBtn,.tab');
+    const t = ev.target.closest('[data-quick],[data-take],[data-skip],[data-entry],[data-month],#addPlanBtn,#addPlanBtn2,#exportBtn,#importBtn,.tab');
     if (!t) return;
     if (t.classList.contains('tab')) return switchTab(t.dataset.tab);
     if (t.dataset.quick) {
@@ -867,6 +840,7 @@
       return;
     }
     if (t.dataset.entry) return openEditSheet(t.dataset.entry);
+    if (t.dataset.month) return openMonthSheet(t.dataset.month);
     if (t.id === 'addPlanBtn' || t.id === 'addPlanBtn2') return openAddSheet();
     if (t.id === 'exportBtn') return exportData();
     if (t.id === 'importBtn') return $('#importFile').click();
@@ -1045,7 +1019,7 @@
         lastDay = todayStr(); render();
       }
     });
-    window.__nenkyu = { switchTab, openAddSheet, openEditSheet, closeSheet, render, state };
+    window.__nenkyu = { switchTab, openMonthSheet, openAddSheet, openEditSheet, closeSheet, render, state };
   })();
 
   // ---------- visualViewport（キーボード対策） ----------
