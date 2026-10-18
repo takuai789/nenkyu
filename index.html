@@ -246,6 +246,10 @@
   }
   #updateBanner.show { transform: translateY(0); }
   #updateBanner svg { display: block; flex-shrink: 0; }
+  .bk-card { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 14px; padding: 12px 14px; margin: 12px 0; }
+  .bk-card .bk-t { font-weight: 700; color: #c2410c; font-size: 14px; }
+  .bk-card .bk-d { font-size: 12.5px; color: #7c2d12; line-height: 1.6; margin: 4px 0 8px; }
+  .bk-card .bk-btn { border: 0; border-radius: 10px; background: #f97316; color: #fff; font-weight: 700; font-size: 13.5px; padding: 9px 14px; font-family: inherit; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -339,7 +343,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.5.0';
+  const APP_VERSION = '1.6.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -626,6 +630,7 @@
     const ents = liveEntries(fy);
     const c = calc(fy, yr, ents, today);
     let html = meterHTML(c);
+    if (state.entries.size && bkDue()) html += `<div class="bk-card"><div class="bk-t">💾 ${bkText()}</div><div class="bk-d">データはこの端末の中だけにあります。月に1回、書き出して iCloud Drive に置いておくと安心です。</div><button class="bk-btn" id="bkNowBtn">いま書き出す</button></div>`;
 
     // 今日（表示中の年度が今年度のときだけ）
     if (fyOf(today) === fy) {
@@ -668,6 +673,7 @@
     }
     html += `<button class="add-plan" id="addPlanBtn">＋ 予定を入れる</button>`;
     el.innerHTML = html;
+    const bb = el.querySelector('#bkNowBtn'); if (bb) bb.addEventListener('click', exportData);
   }
 
   function rowHTML(e, today) {
@@ -776,7 +782,7 @@
     html += `<div class="section-label">バックアップ</div><div class="list">
       <button class="set-btn" id="exportBtn">JSONに書き出す</button>
       <button class="set-btn" id="importBtn">JSONから取り込む</button>
-    </div><div class="note">iCloud Driveに保存しておけば、機種変更や別端末への移行に使えます。取り込みは日付ごとに新しい方を残します。</div>
+    </div><div class="note">${bkText()}。<br>iCloud Driveに保存しておけば、機種変更や別端末への移行に使えます。取り込みは日付ごとに新しい方を残します。</div>
     <div id="versionLabel">v${APP_VERSION}</div>`;
     el.innerHTML = html;
     bindSteppers(el, async (key, val) => {
@@ -970,6 +976,31 @@
     if (fn) { await fn(); toast('取り消しました'); }
   });
 
+
+  // ---------- バックアップ（全アプリ共通の作法） ----------
+  // iPhone：共有メニュー →「"ファイル"に保存」→ iCloud Drive「アプリのバックアップ」フォルダ
+  // Mac：ダウンロード。ファイル名は「アプリ名_YYYY-MM-DD.json」でそろえる。
+  function bkName(app) { const d = new Date(); return `${app}_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`; }
+  async function bkSave(app, text) { // 戻り値 'ok' | 'cancel'
+    const name = bkName(app);
+    if (navigator.maxTouchPoints > 0) {
+      try {
+        const file = new File([text], name, { type: 'application/json' });
+        if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return 'ok'; }
+      } catch (e) { if (e && e.name === 'AbortError') return 'cancel'; }
+    }
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    return 'ok';
+  }
+  const BK_KEY = 'nenkyu.lastBackupAt', BK_DAYS = 30;
+  function bkMark() { try { localStorage.setItem(BK_KEY, String(Date.now())); } catch (e) {} }
+  function bkDays() { let t = 0; try { t = Number(localStorage.getItem(BK_KEY) || 0); } catch (e) {} return t ? Math.floor((Date.now() - t) / 86400000) : null; }
+  function bkDue() { const d = bkDays(); return d === null || d >= BK_DAYS; }
+  function bkText() { const d = bkDays(); return d === null ? 'まだ一度もバックアップしていません' : d === 0 ? '前回のバックアップ：今日' : `前回のバックアップから ${d}日`; }
+
   // ---------- JSON 書き出し/取り込み（スマートマージ） ----------
   const SCHEMA = 'nenkyu.v1';
   async function exportData() {
@@ -978,13 +1009,10 @@
       years: Array.from(state.years.values()),
       entries: Array.from(state.entries.values()),
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `nenkyu-${todayStr()}.json`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (await bkSave('年休メーター', JSON.stringify(data, null, 2)) !== 'ok') return;
+    bkMark();
     toast('書き出しました');
+    render();
   }
   async function importData(file) {
     let data;
