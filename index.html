@@ -81,6 +81,15 @@
   .big small { font-size: 18px; font-weight: 600; margin-left: 4px; letter-spacing: 0; }
   .big-label { font-size: 13px; color: var(--secondary); margin-bottom: 6px; }
   .of { font-size: 13px; color: var(--secondary); text-align: right; line-height: 1.6; }
+  /* いまやること（ひとこと＋次の休みの候補日） */
+  .advice .adv-t { font-size: 17px; font-weight: 800; margin-bottom: 4px; }
+  .advice .adv-t.ok { color: #127A6A; } .advice .adv-t.warn { color: #C27A00; } .advice .adv-t.ng { color: #D12A20; }
+  .advice .adv-d { font-size: 14px; line-height: 1.65; color: var(--ink); }
+  .advice .cands { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .advice .cand { border: 1.5px solid var(--accent); background: var(--accent-soft); color: #127A6A; border-radius: 12px; padding: 8px 12px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .advice .cand small { display: block; font-size: 11px; font-weight: 500; opacity: .8; }
+  .advice .cand:active { transform: scale(.97); }
+  .advice .cand-note { font-size: 11.5px; color: var(--secondary); margin-top: 8px; }
   .pill { display: inline-block; padding: 6px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; margin-top: 14px; }
   .pill.ok { background: var(--accent-soft); color: #127A6A; }
   .pill.ng { background: #FFE3E1; color: #D12A20; }
@@ -343,7 +352,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.9.0';
+  const APP_VERSION = '1.10.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -620,6 +629,90 @@
       <div style="font-size:15px;font-weight:600;">${main}</div></div>`;
   }
 
+  // ---------- いまやること：ひとことアドバイスと、次に休むといい日 ----------
+  // 考え方：目標を残したうえで使える日数（free）を、年度末までの営業日に均等に散らす。
+  // 最後に休んだ日（取得・予定）から「何営業日に1回」ぶん空いたら次の候補。金曜・月曜に寄せる（3連休になる）。
+  function nextCandidates(fy, ents, c, today, gap = 0, byEnd = null) {
+    const p = pace(c, today);
+    if (!p || p.every == null || c.free < 0.5) return [];
+    const end = `${fy + 1}-03-31`;
+    const rest = new Set(ents.filter((e) => (e.actAmt != null ? e.actAmt > 0 : e.planAmt > 0)).map((e) => e.id));
+    const taken = new Set(ents.map((e) => e.id));
+    // 直近の休み（今日以前）
+    let last = null;
+    for (const id of rest) if (id <= today && (!last || id > last)) last = id;
+    const out = []; let budget = c.free;
+    let sinceLast = last ? bizDaysBetween(last, today) - (isBizDay(last) ? 1 : 0) : Math.ceil(p.every / 2);
+    const d = parse(today); d.setDate(d.getDate() + 1);
+    let step = Math.max(2, Math.round(p.every));
+    // ペースより遅れているときは、遅れのぶん（来月末まで）に収まるよう間隔を詰める
+    if (gap >= 1 && byEnd) {
+      const t = parse(today); t.setDate(t.getDate() + 1);
+      const bizTo = bizDaysBetween(ymd(t), byEnd);
+      const need = Math.min(3, Math.ceil(gap));
+      step = Math.max(2, Math.min(step, Math.floor(bizTo / need)));
+    }
+    while (ymd(d) <= end && out.length < 3 && budget >= 0.5) {
+      const s = ymd(d);
+      const mdk = s.slice(5);
+      const newYear = mdk >= '12-29' || mdk <= '01-03';
+      if (isBizDay(s) && !newYear) {
+        sinceLast++;
+        if (rest.has(s)) sinceLast = 0;
+        else if (sinceLast >= step && !taken.has(s)) {
+          // 近くの金曜・月曜（前後2営業日以内）があればそちらに
+          let pick = s;
+          for (let k = 0; k <= 2; k++) {
+            const f = new Date(d); f.setDate(f.getDate() + k); const fs = ymd(f);
+            if (fs <= end && isBizDay(fs) && !(fs.slice(5) >= '12-29' || fs.slice(5) <= '01-03') && !taken.has(fs) && !rest.has(fs) && (f.getDay() === 5 || f.getDay() === 1)) { pick = fs; break; }
+          }
+          const amt = budget >= 1 ? 1 : 0.5;
+          out.push({ id: pick, amt }); budget -= amt; taken.add(pick);
+          d.setTime(parse(pick).getTime()); sinceLast = 0;
+        }
+      }
+      d.setDate(d.getDate() + 1);
+    }
+    return out;
+  }
+  function adviceHTML(fy, yr, ents, c, today) {
+    if (fyOf(today) !== fy) return '';
+    const p = pace(c, today);
+    if (!p) return '';
+    // 来月末（3月なら今月末）の「目標を残すペース」の線と、予定込みの残りを比べる
+    const rows = paceRows(fy, yr, ents, today);
+    const ci = rows.findIndex((r) => r.kind === 'cur');
+    const row = ci < 0 ? null : rows[Math.min(ci + 1, rows.length - 1)];
+    const gap = row && row.withPlan != null ? row.withPlan - row.guide : 0; // ＋なら休み不足、−なら取りすぎ
+    let cls = 'ok', title, body;
+    if (c.free < 0) {
+      cls = 'ng'; title = '少し使いすぎ';
+      body = `今の予定を全部取ると、年度末に目標より <b>${fmt(-c.free)}日</b> 足りなくなります。予定を${fmt(-c.free)}日ぶん減らすか、目標残を見直しましょう。`;
+    } else if (c.free < 0.5) {
+      title = '予定どおりで目標ぴったり';
+      body = '入っている予定を取れば、年度末にちょうど目標の日数が残ります。追加の休みは入れなくて大丈夫です。';
+    } else if (p.biz > 0 && c.free / p.biz > 0.25) {
+      cls = 'warn'; title = '休みが余りそう';
+      body = `年度末まで残り${p.biz}営業日で、まだ <b>${fmt(c.free)}日</b> 使えます。早めに予定を入れておかないと余ってしまいます。`;
+    } else if (gap >= 3) {
+      cls = 'warn'; title = '休みが足りていない';
+      body = `目標のペースより <b>${fmt(gap)}日</b> 多く残っています。下の候補日を中心に、少し多めに予定を入れていきましょう。`;
+    } else if (gap >= 1) {
+      cls = 'warn'; title = 'ちょっと休み不足';
+      body = `目標のペースより <b>${fmt(gap)}日</b> 多く残っています。来月までに${gap >= 1.5 ? '2日' : '1日'}入れると、ペースに乗れます。`;
+    } else if (gap <= -1) {
+      title = 'ここまで多めに休めています';
+      body = `ペースより${fmt(-gap)}日先に進んでいます。しばらくはゆっくりめで大丈夫。あと <b>${fmt(c.free)}日</b> 使えます。`;
+    } else {
+      title = 'いいペース';
+      body = `このままで大丈夫。あと <b>${fmt(c.free)}日</b>、だいたい${Math.round(p.every)}営業日に1回のペースで休めます。`;
+    }
+    const cands = nextCandidates(fy, ents, c, today, gap, row ? row.end : null);
+    const candHTML = cands.length ? `<div class="cands">${cands.map((x) => `<button class="cand" data-cand="${x.id}" data-amt="${x.amt}">${md(x.id)}（${wd(x.id)}）<small>${amtLabel(x.amt)}を予定に入れる</small></button>`).join('')}</div>
+      <div class="cand-note">次に休むといい日の候補です（金曜・月曜を優先）。タップで予定に入ります。</div>` : '';
+    return `<div class="card advice"><div class="adv-t ${cls}">${title}</div><div class="adv-d">${body}</div>${candHTML}</div>`;
+  }
+
   function renderHome() {
     const el = $('#homeScroll');
     const fy = state.fy;
@@ -629,7 +722,7 @@
 
     const ents = liveEntries(fy);
     const c = calc(fy, yr, ents, today);
-    let html = meterHTML(c);
+    let html = adviceHTML(fy, yr, ents, c, today) + meterHTML(c);
     if (state.entries.size && bkDue()) html += `<div class="bk-card"><div class="bk-t">💾 ${bkText()}</div><div class="bk-d">データはこの端末の中だけにあります。月に1回、書き出して iCloud Drive に置いておくと安心です。</div><button class="bk-btn" id="bkNowBtn">いま書き出す（バックアップ）</button></div>`;
 
     // 今日（表示中の年度が今年度のときだけ）
@@ -820,9 +913,16 @@
 
   // ---------- 操作（イベント委譲） ----------
   document.addEventListener('click', async (ev) => {
-    const t = ev.target.closest('[data-quick],[data-take],[data-skip],[data-entry],[data-month],#addPlanBtn,#addPlanBtn2,#exportBtn,#importBtn,.tab');
+    const t = ev.target.closest('[data-cand],[data-quick],[data-take],[data-skip],[data-entry],[data-month],#addPlanBtn,#addPlanBtn2,#exportBtn,#importBtn,.tab');
     if (!t) return;
     if (t.classList.contains('tab')) return switchTab(t.dataset.tab);
+    if (t.dataset.cand) {
+      const id = t.dataset.cand, amt = Number(t.dataset.amt);
+      const prev = await saveEntry(id, { planAmt: amt });
+      render();
+      toast(`${md(id)}（${wd(id)}）を${amtLabel(amt)}で予定に入れました`, async () => { await restoreEntry(id, prev); render(); });
+      return;
+    }
     if (t.dataset.quick) {
       const amt = Number(t.dataset.quick);
       const id = todayStr();
