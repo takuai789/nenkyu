@@ -343,7 +343,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.6.0';
+  const APP_VERSION = '1.7.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -630,7 +630,7 @@
     const ents = liveEntries(fy);
     const c = calc(fy, yr, ents, today);
     let html = meterHTML(c);
-    if (state.entries.size && bkDue()) html += `<div class="bk-card"><div class="bk-t">💾 ${bkText()}</div><div class="bk-d">データはこの端末の中だけにあります。月に1回、書き出して iCloud Drive に置いておくと安心です。</div><button class="bk-btn" id="bkNowBtn">いま書き出す</button></div>`;
+    if (state.entries.size && bkDue()) html += `<div class="bk-card"><div class="bk-t">💾 ${bkText()}</div><div class="bk-d">データはこの端末の中だけにあります。月に1回、書き出して iCloud Drive に置いておくと安心です。</div><button class="bk-btn" id="bkNowBtn">いま書き出す（バックアップ）</button></div>`;
 
     // 今日（表示中の年度が今年度のときだけ）
     if (fyOf(today) === fy) {
@@ -780,8 +780,8 @@
         ${stepperRow('grant', '毎年の付与日数', '開始時に前年度の残りに足す', getGrant())}
       </div><div class="note">新しい年度を開くと「前年度の残り＋付与日数」が年休数の初期値になります。開始前に手で直せます。</div>`;
     html += `<div class="section-label">バックアップ</div><div class="list">
-      <button class="set-btn" id="exportBtn">JSONに書き出す</button>
-      <button class="set-btn" id="importBtn">JSONから取り込む</button>
+      <button class="set-btn" id="exportBtn">データを書き出す（バックアップ）</button>
+      <button class="set-btn" id="importBtn">データを取り込む</button>
     </div><div class="note">${bkText()}。<br>iCloud Driveに保存しておけば、機種変更や別端末への移行に使えます。取り込みは日付ごとに新しい方を残します。</div>
     <div id="versionLabel">v${APP_VERSION}</div>`;
     el.innerHTML = html;
