@@ -73,6 +73,15 @@
   .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 16px 24px; }
 
   .card { background: var(--card); border-radius: 16px; padding: 16px; margin-bottom: 14px; }
+  .hol { padding: 12px 16px; }
+  .hol-top { display: flex; align-items: baseline; justify-content: space-between; }
+  .hol-l { font-size: 14px; font-weight: 700; }
+  .hol-n { font-size: 26px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .hol-n small { font-size: 13px; margin-left: 2px; }
+  .hol-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .hol-chip { font-size: 12px; font-weight: 600; background: var(--accent-soft); color: #127A6A; border-radius: 8px; padding: 4px 8px; }
+  .hol-chip.past { background: var(--fill); color: var(--secondary); }
+  .hol-none { font-size: 12px; color: var(--secondary); margin-top: 4px; }
   .section-label { font-size: 13px; color: var(--secondary); margin: 6px 4px 8px; font-weight: 500; }
 
   /* メーター */
@@ -380,7 +389,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.16.0';
+  const APP_VERSION = '1.17.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -432,6 +441,36 @@
     return all;
   }
   const isHoliday = (s) => holidaysOf(+s.slice(0, 4)).has(s);
+  // 祝日の名前（表示用）
+  function holidayName(s) {
+    if (!isHoliday(s)) return '';
+    const y = +s.slice(0, 4), m = +s.slice(5, 7), d = +s.slice(8, 10);
+    const k = y - 1980, q = Math.floor(k / 4);
+    const fixed = { '1-1': '元日', '2-11': '建国記念の日', '2-23': '天皇誕生日', '4-29': '昭和の日', '5-3': '憲法記念日', '5-4': 'みどりの日', '5-5': 'こどもの日', '8-11': '山の日', '11-3': '文化の日', '11-23': '勤労感謝の日' };
+    if (fixed[`${m}-${d}`]) return fixed[`${m}-${d}`];
+    if (m === 1 && d === nthMonday(y, 1, 2)) return '成人の日';
+    if (m === 3 && d === Math.floor(20.8431 + 0.242194 * k - q)) return '春分の日';
+    if (m === 7 && d === nthMonday(y, 7, 3)) return '海の日';
+    if (m === 9 && d === nthMonday(y, 9, 3)) return '敬老の日';
+    if (m === 9 && d === Math.floor(23.2488 + 0.242194 * k - q)) return '秋分の日';
+    if (m === 10 && d === nthMonday(y, 10, 2)) return 'スポーツの日';
+    // 前に続く祝日の中に日曜があれば振替休日、なければ国民の休日
+    const p = parse(s);
+    for (;;) { p.setDate(p.getDate() - 1); if (!isHoliday(ymd(p))) break; if (p.getDay() === 0) return '振替休日'; }
+    return '国民の休日';
+  }
+  // 今月の祝日（平日に当たるもの＝休みが増える日だけ数える）
+  function monthHolidaysHTML(today) {
+    const y = +today.slice(0, 4), m = +today.slice(5, 7);
+    const days = new Date(y, m, 0).getDate();
+    const list = [];
+    for (let d = 1; d <= days; d++) { const s = `${y}-${pad(m)}-${pad(d)}`; if (isHoliday(s)) list.push(s); }
+    const weekday = list.filter((s) => { const w = parse(s).getDay(); return w !== 0 && w !== 6; });
+    const chips = list.map((s) => `<span class="hol-chip${today > s ? ' past' : ''}">${md(s)}（${wd(s)}）${holidayName(s)}</span>`).join('');
+    return `<div class="card hol"><div class="hol-top"><span class="hol-l">${m}月の祝日</span><span class="hol-n">${weekday.length}<small>日</small></span></div>
+      ${list.length ? `<div class="hol-chips">${chips}</div>` : '<div class="hol-none">今月は祝日がありません</div>'}
+      ${list.length > weekday.length ? '<div class="hol-none">土日と重なる祝日は数に入れていません</div>' : ''}</div>`;
+  }
   const isBizDay = (s) => { const w = parse(s).getDay(); return w !== 0 && w !== 6 && !isHoliday(s); };
 
   // 年度末（3/31）までの残り営業日。fromStr を含む。
@@ -782,7 +821,7 @@
 
     const ents = liveEntries(fy);
     const c = calc(fy, yr, ents, today);
-    let html = adviceHTML(fy, yr, ents, c, today) + meterHTML(c);
+    let html = (fyOf(today) === fy ? monthHolidaysHTML(today) : '') + adviceHTML(fy, yr, ents, c, today) + meterHTML(c);
     if (state.entries.size && bkDue()) html += `<div class="bk-card"><div class="bk-t">💾 ${bkText()}</div><div class="bk-d">データはこの端末の中だけにあります。月に1回、書き出して iCloud Drive に置いておくと安心です。</div><button class="bk-btn" id="bkNowBtn">いま書き出す（バックアップ）</button></div>`;
 
     // 今日（表示中の年度が今年度のときだけ）
