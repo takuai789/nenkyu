@@ -107,6 +107,32 @@
   .off-add .chk input { width: 20px; height: 20px; accent-color: var(--accent); }
   .off-add .go { border: 0; border-radius: 12px; background: var(--accent); color: #fff; font: inherit; font-size: 15px; font-weight: 700; padding: 12px; cursor: pointer; }
   .hol-none { font-size: 12px; color: var(--secondary); margin-top: 4px; }
+  /* ホームのカレンダー */
+  .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .cal-t { font-size: 15px; font-weight: 700; }
+  .cal-nav { border: 0; background: var(--fill); color: var(--accent); width: 36px; height: 32px; border-radius: 9px; font-size: 20px; line-height: 1; cursor: pointer; }
+  .cal-nav:disabled { opacity: .3; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+  .cw { text-align: center; font-size: 11px; color: var(--secondary); padding-bottom: 2px; }
+  .cw.we { color: var(--tertiary); }
+  .cd { position: relative; aspect-ratio: 1 / 1; border: 0; background: none; border-radius: 9px; display: flex; flex-direction: column; align-items: center; justify-content: center; font: inherit; padding: 0; cursor: pointer; color: var(--ink); }
+  .cd.empty { cursor: default; }
+  .cd .n { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .cd .mk { font-size: 9px; font-weight: 800; line-height: 1; margin-top: 2px; }
+  .cd.we .n { color: var(--tertiary); }
+  .cd.d-hol { background: #FDE7E5; } .cd.d-hol .n { color: #D12A20; }
+  .cd.d-co { background: #E6E9FB; } .cd.d-co .n { color: #3F4DB8; }
+  .cd.plan { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); } .cd.plan .n, .cd.plan .mk { color: #127A6A; }
+  .cd.took { background: var(--accent); } .cd.took .n, .cd.took .mk { color: #fff; }
+  .cd.past:not(.took):not(.plan) { opacity: .45; }
+  .cd.today { box-shadow: inset 0 0 0 2px var(--ink); }
+  .cd.today.plan { box-shadow: inset 0 0 0 2px var(--ink); }
+  .cd:active { transform: scale(.94); }
+  .cal-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 10px; font-size: 11px; color: var(--secondary); }
+  .cal-legend .lg { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+  .lg-took { background: var(--accent); } .lg-plan { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .lg-hol { background: #FDE7E5; box-shadow: inset 0 0 0 1px #F3B3AE; } .lg-co { background: #E6E9FB; box-shadow: inset 0 0 0 1px #B9C0F0; }
+  .cal-hint { font-size: 11px; color: var(--tertiary); margin-top: 4px; }
   .section-label { font-size: 13px; color: var(--secondary); margin: 6px 4px 8px; font-weight: 500; }
 
   /* メーター */
@@ -162,6 +188,8 @@
   .gauge .ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
   .gauge .ticks span.l { transform: none; } .gauge .ticks span.r { transform: translateX(-100%); }
   .counts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px; font-size: 12px; color: var(--secondary); }
+  .counts .lost { font-style: normal; color: #D12A20; font-weight: 700; font-size: 12px; margin-left: 4px; }
+  .cap-note { margin-top: 12px; font-size: 12px; line-height: 1.5; color: #B4461A; background: #FFEBE0; border-radius: 10px; padding: 8px 10px; }
   .counts b { color: var(--ink); font-size: 14px; margin-left: 3px; font-variant-numeric: tabular-nums; }
   .legend { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 12px; }
   .legend div { font-size: 11px; color: var(--secondary); }
@@ -415,7 +443,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.22.0';
+  const APP_VERSION = '1.23.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -486,6 +514,41 @@
     for (;;) { p.setDate(p.getDate() - 1); if (!isHoliday(ymd(p))) break; if (p.getDay() === 0) return '振替休日'; }
     return '国民の休日';
   }
+  // ホームの小さなカレンダー：祝日・会社の休み・予定・取った日を色分け。日付を押すとその日の記録を編集
+  function calendarHTML(fy, today) {
+    // 表示中の年度の中に収める
+    const fyFirst = `${fy}-04`, fyLast = `${fy + 1}-03`;
+    if (state.calMonth < fyFirst || state.calMonth > fyLast) state.calMonth = fyOf(today) === fy ? today.slice(0, 7) : fyFirst;
+    const [y, m] = state.calMonth.split('-').map(Number);
+    const days = new Date(y, m, 0).getDate();
+    const lead = new Date(y, m - 1, 1).getDay();
+    let cells = '';
+    for (let i = 0; i < lead; i++) cells += '<span class="cd empty"></span>';
+    for (let d = 1; d <= days; d++) {
+      const s = `${y}-${pad(m)}-${pad(d)}`;
+      const w = parse(s).getDay();
+      const e = state.entries.get(s);
+      const live = e && !e.deleted ? e : null;
+      const cls = ['cd'];
+      if (w === 0 || w === 6) cls.push('we');
+      if (isHoliday(s)) cls.push('d-hol');
+      else if (companyOff(s)) cls.push('d-co');
+      let mark = '';
+      if (live && live.actAmt > 0) { cls.push('took'); mark = live.actAmt === 0.5 ? '半' : '休'; }
+      else if (live && live.actAmt == null && live.planAmt > 0) { cls.push('plan'); mark = live.planAmt === 0.5 ? '半' : '予'; }
+      if (s === today) cls.push('today');
+      if (s < today) cls.push('past');
+      cells += `<button class="${cls.join(' ')}" data-entry="${s}"><span class="n">${d}</span>${mark ? `<span class="mk">${mark}</span>` : ''}</button>`;
+    }
+    const prevOk = state.calMonth > fyFirst, nextOk = state.calMonth < fyLast;
+    return `<div class="card cal">
+      <div class="cal-head"><button class="cal-nav" data-calnav="-1" ${prevOk ? '' : 'disabled'} aria-label="前の月">‹</button><span class="cal-t">${y}年${m}月</span><button class="cal-nav" data-calnav="1" ${nextOk ? '' : 'disabled'} aria-label="次の月">›</button></div>
+      <div class="cal-grid">${WD.map((x, i) => `<span class="cw${i === 0 || i === 6 ? ' we' : ''}">${x}</span>`).join('')}${cells}</div>
+      <div class="cal-legend"><span><i class="lg lg-took"></i>取った</span><span><i class="lg lg-plan"></i>予定</span><span><i class="lg lg-hol"></i>祝日</span><span><i class="lg lg-co"></i>会社の休み</span></div>
+      <div class="cal-hint">日付を押すと、その日の予定・実績を入れられます</div>
+    </div>`;
+  }
+
   // 今月の祝日（平日に当たるもの＝休みが増える日だけ数える）
   function monthHolidaysHTML(today) {
     const y = +today.slice(0, 4), m = +today.slice(5, 7);
@@ -551,6 +614,7 @@
   const state = {
     years: new Map(),
     entries: new Map(),
+    calMonth: todayStr().slice(0, 7),   // ホームのカレンダーで見ている月（YYYY-MM）
     fy: fyOf(todayStr()),
     tab: 'homeView',
   };
@@ -648,6 +712,14 @@
     state.years.set('settings', next);
     await put('years', next);
   }
+  // 繰越の上限（年度末に残っても、これを超えた分は消える）。未設定なら付与日数（2年で消えるので、ふつうはその年の付与分までしか残らない）
+  const getCarryCap = () => { const st = state.years.get('settings'); return st && st.carryCap != null ? st.carryCap : getGrant(); };
+  async function saveCarryCap(v) {
+    const next = Object.assign({}, state.years.get('settings') || { id: 'settings' }, { carryCap: v, updatedAt: Date.now() });
+    state.years.set('settings', next);
+    await put('years', next);
+  }
+  const lostOf = (c) => Math.max(0, c.projected - getCarryCap());
   async function saveGrant(v) {
     const next = Object.assign({}, state.years.get('settings') || { id: 'settings' }, { grant: v, updatedAt: Date.now() });
     state.years.set('settings', next);
@@ -668,9 +740,10 @@
     const info = prevYearInfo(fy);
     const grant = getGrant();
     const t = info ? info.target : 5;
-    const start = (info ? info.remain : 0) + grant;
+    const carried = info ? Math.min(info.remain, getCarryCap()) : 0;   // 上限を超えた分は消えている
+    const start = carried + grant;
     const breakdown = info
-      ? `${fy - 1}年度の残り <b>${fmt(info.remain)}</b> ＋ 付与 <b>${fmt(grant)}</b> ＝ <b>${fmt(start)}</b>日`
+      ? `${fy - 1}年度の残り <b>${fmt(info.remain)}</b>${carried < info.remain ? `（繰越の上限で <b>${fmt(carried)}</b>）` : ''} ＋ 付与 <b>${fmt(grant)}</b> ＝ <b>${fmt(start)}</b>日`
       : `前年度の記録がないので、付与 <b>${fmt(grant)}</b>日から。繰越があれば足してください`;
     const warn = info && info.waits
       ? `<div style="font-size:12px;color:#C27A00;margin-top:4px;">${fy - 1}年度に未確定の予定が${info.waits}件あります（残りには含めていません）</div>` : '';
@@ -720,7 +793,7 @@
           <div class="of">年休 ${fmt(c.total)}日<br>目標残 ${fmt(c.target)}日</div>
         </div>
         ${rateHTML(c)}
-        <div class="counts"><span>取得<b>${fmt(c.used)}</b></span><span>予定<b>${fmt(c.pending)}</b></span><span>まだ使える<b>${fmt(Math.max(0, c.free))}</b></span><span>年度末に残る<b>${fmt(c.projected)}</b></span></div>
+        <div class="counts"><span>取得<b>${fmt(c.used)}</b></span><span>予定<b>${fmt(c.pending)}</b></span><span>まだ使える<b>${fmt(Math.max(0, c.free))}</b></span><span>年度末に残る<b>${fmt(c.projected)}</b>${lostOf(c) >= 0.5 ? `<em class="lost">うち${fmt(lostOf(c))}日消える</em>` : ''}</span></div>
         ${paceHTML(c)}
       </div>`;
   }
@@ -754,10 +827,11 @@
     const r0 = both ? monthRate(c, 0) : null;
     const MAX = 4;   // ゲージの右端（4日/月）
     const pos = (r) => Math.min(Math.max(r.per, 0), MAX) / MAX * 100;
+    const capNote = c.target > getCarryCap() ? `<div class="cap-note">目標残（${fmt(c.target)}日）が繰越の上限（${fmt(getCarryCap())}日）を超えています。上限を超えた分は消えるので、目標を${fmt(getCarryCap())}日以下にするのがおすすめです。</div>` : '';
     const lead = c.pending > 0
       ? `入れてある予定（${fmt(c.pending)}日）を<b>予定どおり休む</b>として、年度末まで月に何日休めるか`
       : '年度末まで月に何日休めるか';
-    let html = `<div class="rate-lead">${lead}</div>` + rateRow(rt, both ? `目標の${fmt(c.target)}日を残すなら` : 'ちょうど使い切るなら', false);
+    let html = capNote + `<div class="rate-lead">${lead}</div>` + rateRow(rt, both ? `目標の${fmt(c.target)}日を残すなら` : 'ちょうど使い切るなら', false);
     if (both) html += rateRow(r0, 'ちょうど使い切るなら', true);
     html += `
       <div class="gauge">
@@ -858,6 +932,9 @@
     if (c.free < 0) {
       cls = 'ng'; title = '少し使いすぎ';
       body = `今の予定を全部取ると、年度末に目標より <b>${fmt(-c.free)}日</b> 足りなくなります。予定を${fmt(-c.free)}日ぶん減らすか、目標残を見直しましょう。`;
+    } else if (lostOf(c) >= 0.5) {
+      cls = 'ng'; title = `このままだと ${fmt(lostOf(c))}日 消えます`;
+      body = `予定どおり休んでも、年度末に <b>${fmt(c.projected)}日</b> 残ります。繰り越せるのは${fmt(getCarryCap())}日までなので、<b>${fmt(lostOf(c))}日</b> ぶんが消えてしまいます。消える前に予定を入れましょう。`;
     } else if (c.free < 0.5) {
       title = '予定どおりで目標ぴったり';
       body = '入っている予定を取れば、年度末にちょうど目標の日数が残ります。追加の休みは入れなくて大丈夫です。';
@@ -892,7 +969,7 @@
 
     const ents = liveEntries(fy);
     const c = calc(fy, yr, ents, today);
-    let html = (fyOf(today) === fy ? monthHolidaysHTML(today) : '') + adviceHTML(fy, yr, ents, c, today) + meterHTML(c);
+    let html = (fyOf(today) === fy ? monthHolidaysHTML(today) : '') + adviceHTML(fy, yr, ents, c, today) + meterHTML(c) + calendarHTML(fy, today);
     if (state.entries.size && bkDue()) html += `<div class="bk-card"><div class="bk-t">💾 ${bkText()}</div><div class="bk-d">データはこの端末の中だけにあります。月に1回、書き出して iCloud Drive に置いておくと安心です。</div><button class="bk-btn" id="bkNowBtn">いま書き出す（バックアップ）</button></div>`;
 
     // 今日（表示中の年度が今年度のときだけ）
@@ -937,6 +1014,17 @@
     html += `<button class="add-plan" id="addPlanBtn">＋ 予定を入れる</button>`;
     el.innerHTML = html;
     const bb = el.querySelector('#bkNowBtn'); if (bb) bb.addEventListener('click', exportData);
+    renderHomeCalBind(el);
+  }
+  // カレンダーの ‹ › （カードだけ差し替える）
+  function renderHomeCalBind(el) {
+    el.querySelectorAll('[data-calnav]').forEach((b) => b.addEventListener('click', () => {
+      const [yy, mm] = state.calMonth.split('-').map(Number);
+      const d = new Date(yy, mm - 1 + Number(b.dataset.calnav), 1);
+      state.calMonth = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+      const card = el.querySelector('.cal'); if (card) card.outerHTML = calendarHTML(state.fy, todayStr());
+      renderHomeCalBind(el);
+    }));
   }
 
   function rowHTML(e, today) {
@@ -1041,7 +1129,8 @@
     }
     html += `<div class="section-label">年度の開始</div><div class="list">
         ${stepperRow('grant', '毎年の付与日数', '開始時に前年度の残りに足す', getGrant())}
-      </div><div class="note">新しい年度を開くと「前年度の残り＋付与日数」が年休数の初期値になります。開始前に手で直せます。</div>`;
+        ${stepperRow('carryCap', '繰越の上限', 'これを超えて残った分は消える', getCarryCap())}
+      </div><div class="note">新しい年度を開くと「前年度の残り＋付与日数」が年休数の初期値になります。開始前に手で直せます。<br>繰越の上限：年休は2年で消えるので、ふつうは「その年の付与日数」までしか繰り越せません。会社の規定に合わせて変えられます。年度末にこれを超えて残りそうなときは、ホームでお知らせします。</div>`;
     const offs = getOffs();
     const offWhen = (o) => {
       if (o.kind === 'nth') return nthLabel(o);
@@ -1077,6 +1166,7 @@
     bindSteppers(el, async (key, val) => {
       if (key === 'total' || key === 'target') { await saveYear(fy, { [key]: val }); renderHome(); renderPace('goal'); renderPace('zero'); }
       if (key === 'grant') { await saveGrant(val); renderHome(); renderSettings(); }
+      if (key === 'carryCap') { await saveCarryCap(val); renderHome(); }
     });
     bindSetup(el);
     // 会社の休み
