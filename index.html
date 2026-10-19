@@ -94,6 +94,11 @@
   .off-add { padding: 12px 14px; display: grid; gap: 8px; }
   .off-add input[type=text], .off-add input[type=date] { width: 100%; min-width: 0; font: inherit; font-size: 16px; border: 0; background: var(--fill); border-radius: 10px; padding: 10px 12px; color: var(--ink); -webkit-appearance: none; }
   .off-add .two { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 6px; align-items: center; font-size: 13px; color: var(--secondary); }
+  .off-kind { display: flex; background: var(--fill); border-radius: 10px; padding: 2px; }
+  .off-kind button { flex: 1; border: 0; background: none; font: inherit; font-size: 14px; padding: 8px 0; border-radius: 8px; color: var(--ink); cursor: pointer; }
+  .off-kind button.on { background: var(--card); box-shadow: 0 1px 4px rgba(0,0,0,.12); font-weight: 700; }
+  .off-add .three { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
+  .off-add select { width: 100%; min-width: 0; font: inherit; font-size: 16px; border: 0; background: var(--fill); border-radius: 10px; padding: 10px 8px; color: var(--ink); -webkit-appearance: none; text-align: center; }
   .off-add .chk { display: flex; align-items: center; gap: 8px; font-size: 14px; }
   .off-add .chk input { width: 20px; height: 20px; accent-color: var(--accent); }
   .off-add .go { border: 0; border-radius: 12px; background: var(--accent); color: #fff; font: inherit; font-size: 15px; font-weight: 700; padding: 12px; cursor: pointer; }
@@ -405,7 +410,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.18.0';
+  const APP_VERSION = '1.19.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -505,9 +510,20 @@
   // 会社の休み（年末年始・創立記念日など）。settings.offs = [{id, name, from, to, yearly}]
   // yearly のとき from/to は 'MM-DD'、そうでなければ 'YYYY-MM-DD'
   const getOffs = () => { const st = state.years.get('settings'); return st && Array.isArray(st.offs) ? st.offs : []; };
+  // 「◯月の第N ◯曜日」型：{ kind:'nth', month(0=毎月), nth(1-4, -1=最終), dow(0-6) }
+  function nthMatch(o, s) {
+    const d = parse(s);
+    if (d.getDay() !== o.dow) return false;
+    if (o.month && d.getMonth() + 1 !== o.month) return false;
+    if (o.nth === -1) { const n = new Date(d); n.setDate(n.getDate() + 7); return n.getMonth() !== d.getMonth(); }
+    return Math.ceil(d.getDate() / 7) === o.nth;
+  }
+  const DOW = ['日', '月', '火', '水', '木', '金', '土'];
+  const nthLabel = (o) => `${o.month ? o.month + '月の' : '毎月'}${o.nth === -1 ? '最終' : '第' + o.nth}${DOW[o.dow]}曜`;
   function companyOff(s) {
     const mmdd = s.slice(5);
     for (const o of getOffs()) {
+      if (o.kind === 'nth') { if (nthMatch(o, s)) return o; continue; }
       const to = o.to || o.from;
       if (o.yearly) {
         const hit = o.from <= to ? (mmdd >= o.from && mmdd <= to) : (mmdd >= o.from || mmdd <= to); // 年をまたぐ（12/29〜1/3）
@@ -1023,19 +1039,30 @@
       </div><div class="note">新しい年度を開くと「前年度の残り＋付与日数」が年休数の初期値になります。開始前に手で直せます。</div>`;
     const offs = getOffs();
     const offWhen = (o) => {
+      if (o.kind === 'nth') return nthLabel(o);
       const f = o.yearly ? o.from.replace('-', '/').replace(/^0/, '').replace('/0', '/') : md(o.from);
       const t = o.to && o.to !== o.from ? (o.yearly ? o.to.replace('-', '/').replace(/^0/, '').replace('/0', '/') : md(o.to)) : '';
       return f + (t ? '〜' + t : '');
     };
     html += `<div class="section-label">会社の休み（祝日以外）</div><div class="list">
-      ${offs.map((o) => `<div class="off-row"><span class="when">${offWhen(o)}</span><span class="nm">${esc(o.name)}</span>${o.yearly ? '<span class="yr">毎年</span>' : ''}<button class="del" data-offdel="${o.id}">削除</button></div>`).join('')}
+      ${offs.map((o) => `<div class="off-row"><span class="when">${offWhen(o)}</span><span class="nm">${esc(o.name)}</span>${o.yearly || (o.kind === 'nth' && o.month) ? '<span class="yr">毎年</span>' : ''}<button class="del" data-offdel="${o.id}">削除</button></div>`).join('')}
       <div class="off-add">
         <input type="text" id="offName" placeholder="名前（例：年末年始、創立記念日）" maxlength="20">
-        <div class="two"><input type="date" id="offFrom"><span>〜</span><input type="date" id="offTo"></div>
-        <label class="chk"><input type="checkbox" id="offYearly" checked>毎年おなじ日</label>
+        <div class="off-kind"><button data-okind="date" class="on">日付で</button><button data-okind="nth">曜日で（第2金曜など）</button></div>
+        <div id="offDateBox">
+          <div class="two"><input type="date" id="offFrom"><span>〜</span><input type="date" id="offTo"></div>
+          <label class="chk" style="margin-top:8px"><input type="checkbox" id="offYearly" checked>毎年おなじ日</label>
+        </div>
+        <div id="offNthBox" style="display:none">
+          <div class="three">
+            <select id="offMonth"><option value="0">毎月</option>${[...Array(12)].map((_, i) => `<option value="${i + 1}"${i === 3 ? ' selected' : ''}>${i + 1}月</option>`).join('')}</select>
+            <select id="offNth">${[1, 2, 3, 4].map((n) => `<option value="${n}"${n === 2 ? ' selected' : ''}>第${n}</option>`).join('')}<option value="-1">最終</option></select>
+            <select id="offDow">${DOW.map((w, i) => `<option value="${i}"${i === 5 ? ' selected' : ''}>${w}曜日</option>`).join('')}</select>
+          </div>
+        </div>
         <button class="go" id="offAdd">追加</button>
       </div>
-    </div><div class="note">1日だけなら終わりの日は空のままで大丈夫です。登録した日は営業日から外れるので、「残り営業日」「何営業日に1回」「候補日」にも反映されます。</div>`;
+    </div><div class="note">「曜日で」は、4月の第2金曜日のように毎年（または毎月）決まった曜日の休みに。1日だけなら終わりの日は空のままで大丈夫です。登録した日は営業日から外れるので、「残り営業日」「何営業日に1回」「候補日」にも反映されます。</div>`;
     html += `<div class="section-label">バックアップ</div><div class="list">
       <button class="set-btn" id="exportBtn">データを書き出す（バックアップ）</button>
       <button class="set-btn" id="importBtn">データを取り込む</button>
@@ -1048,8 +1075,24 @@
     });
     bindSetup(el);
     // 会社の休み
+    let offKind = 'date';
+    el.querySelectorAll('[data-okind]').forEach((b) => b.addEventListener('click', () => {
+      offKind = b.dataset.okind;
+      el.querySelectorAll('[data-okind]').forEach((x) => x.classList.toggle('on', x === b));
+      el.querySelector('#offDateBox').style.display = offKind === 'date' ? '' : 'none';
+      el.querySelector('#offNthBox').style.display = offKind === 'nth' ? '' : 'none';
+    }));
     el.querySelector('#offAdd').addEventListener('click', async () => {
       const name = el.querySelector('#offName').value.trim();
+      if (offKind === 'nth') {
+        if (!name) { toast('名前を入れてください'); return; }
+        const o = { id: 'o' + Date.now().toString(36), name, kind: 'nth',
+          month: +el.querySelector('#offMonth').value, nth: +el.querySelector('#offNth').value, dow: +el.querySelector('#offDow').value };
+        await saveOffs([...getOffs(), o]);
+        renderSettings(); renderHome(); renderPace('goal'); renderPace('zero');
+        toast(`「${name}」（${nthLabel(o)}）を追加しました`);
+        return;
+      }
       const from = el.querySelector('#offFrom').value;
       let to = el.querySelector('#offTo').value || from;
       const yearly = el.querySelector('#offYearly').checked;
