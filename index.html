@@ -456,7 +456,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.24.0';
+  const APP_VERSION = '1.25.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -983,21 +983,23 @@
 
     const ents = liveEntries(fy);
     const c = calc(fy, yr, ents, today);
-    let html = (fyOf(today) === fy ? monthHolidaysHTML(today) : '') + adviceHTML(fy, yr, ents, c, today) + meterHTML(c);
+    // 並び：今月の祝日 → 今日、休む → いまの残り → アドバイス（候補日）
+    let html = (fyOf(today) === fy ? monthHolidaysHTML(today) : '') + '<!--TODAY-->' + meterHTML(c) + adviceHTML(fy, yr, ents, c, today);
     if (state.entries.size && bkDue()) html += `<div class="bk-card"><div class="bk-t">💾 ${bkText()}</div><div class="bk-d">データはこの端末の中だけにあります。月に1回、書き出して iCloud Drive に置いておくと安心です。</div><button class="bk-btn" id="bkNowBtn">いま書き出す（バックアップ）</button></div>`;
 
-    // 今日（表示中の年度が今年度のときだけ）
+    // 今日（表示中の年度が今年度のときだけ）。祝日カードのすぐ下に差し込む
+    let todayHTML = '';
     if (fyOf(today) === fy) {
       const te = state.entries.get(today);
       const took = te && !te.deleted && te.actAmt > 0;
       const d = parse(today);
       if (took) {
-        html += `<div class="card"><div class="done-today">
+        todayHTML = `<div class="card"><div class="done-today">
           <div class="msg">今日は <span>${amtLabel(te.actAmt)}</span> で記録済み</div>
           <button class="link-btn" data-entry="${today}">変更</button></div></div>`;
       } else {
         const planNote = te && !te.deleted && te.planAmt ? `（${amtLabel(te.planAmt)}の予定あり）` : '';
-        html += `<div class="card">
+        todayHTML = `<div class="card">
           <div class="today-head"><span class="t">今日、休む</span><span class="d">${d.getMonth() + 1}月${d.getDate()}日（${wd(today)}）${planNote}</span></div>
           <div class="two">
             <button class="big-btn soft" data-quick="0.5">半休<small>0.5日</small></button>
@@ -1005,6 +1007,8 @@
           </div></div>`;
       }
     }
+
+    html = html.replace('<!--TODAY-->', todayHTML);
 
     // 未確定（予定日を過ぎたもの）
     const waits = ents.filter((e) => statusOf(e, today) === 'wait');
