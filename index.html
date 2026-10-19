@@ -42,6 +42,7 @@
   }
   button { font-family: inherit; }
   #app {
+    position: fixed; left: 0; right: 0; top: var(--app-top, 0px);
     height: var(--app-height, 100%);
     display: flex; flex-direction: column;
     padding-top: var(--safe-top);
@@ -93,7 +94,10 @@
   .off-row .del { border: 0; background: none; color: #D12A20; font: inherit; font-size: 14px; padding: 4px 6px; cursor: pointer; flex-shrink: 0; }
   .off-add { padding: 12px 14px; display: grid; gap: 8px; }
   .off-add input[type=text], .off-add input[type=date] { width: 100%; min-width: 0; font: inherit; font-size: 16px; border: 0; background: var(--fill); border-radius: 10px; padding: 10px 12px; color: var(--ink); -webkit-appearance: none; }
-  .off-add .two { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 6px; align-items: center; font-size: 13px; color: var(--secondary); }
+  .off-add .dt { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .off-add .dt span { font-size: 11px; color: var(--secondary); padding-left: 2px; }
+  .off-add input[type=date] { display: block; min-height: 44px; text-align: left; }
+  .off-add .two { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 6px; align-items: end; font-size: 13px; color: var(--secondary); }
   .off-kind { display: flex; background: var(--fill); border-radius: 10px; padding: 2px; }
   .off-kind button { flex: 1; border: 0; background: none; font: inherit; font-size: 14px; padding: 8px 0; border-radius: 8px; color: var(--ink); cursor: pointer; }
   .off-kind button.on { background: var(--card); box-shadow: 0 1px 4px rgba(0,0,0,.12); font-weight: 700; }
@@ -255,6 +259,7 @@
   #versionLabel { text-align: center; padding: 6px; font-size: 12px; color: var(--tertiary); }
 
   /* タブバー */
+  body.keyboard-open .tabbar { display: none; }
   .tabbar {
     display: flex; background: rgba(249,249,249,0.94);
     backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
@@ -268,7 +273,7 @@
   .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.32); opacity: 0; pointer-events: none; transition: opacity 0.25s; z-index: 200; }
   .backdrop.show { opacity: 1; pointer-events: auto; }
   .sheet {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 201;
+    position: fixed; left: 0; right: 0; bottom: var(--kb, 0px); z-index: 201;
     background: var(--bg); border-radius: 16px 16px 0 0;
     padding: 8px 16px calc(var(--safe-bottom) + 20px);
     transform: translateY(105%); transition: transform 0.32s cubic-bezier(.32,.72,0,1);
@@ -410,7 +415,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.20.0';
+  const APP_VERSION = '1.21.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -1050,7 +1055,7 @@
         <input type="text" id="offName" placeholder="名前（例：年末年始、創立記念日）" maxlength="20">
         <div class="off-kind"><button data-okind="date" class="on">日付で</button><button data-okind="nth">曜日で（第2金曜など）</button></div>
         <div id="offDateBox">
-          <div class="two"><input type="date" id="offFrom"><span>〜</span><input type="date" id="offTo"></div>
+          <div class="two"><label class="dt"><span>始まりの日</span><input type="date" id="offFrom"></label><span>〜</span><label class="dt"><span>終わりの日（任意）</span><input type="date" id="offTo"></label></div>
           <label class="chk" style="margin-top:8px"><input type="checkbox" id="offYearly" checked>毎年おなじ日</label>
         </div>
         <div id="offNthBox" style="display:none">
@@ -1395,12 +1400,35 @@
   })();
 
   // ---------- visualViewport（キーボード対策） ----------
+  // アプリ全体を「いま見えている範囲」（キーボードの上）にぴったり重ねる。
+  // iPhone はキーボードの出入りで見える範囲を少しずつ動かし、通知が来ないこともあるので、入力中は毎フレーム追いかける。
   function setupViewportTracking() {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const root = document.documentElement;
-    function apply() { root.style.setProperty('--app-height', vv.height + 'px'); }
-    vv.addEventListener('resize', apply);
+    const vv = window.visualViewport; if (!vv) return;
+    const root = document.documentElement; let baseHeight = vv.height, lastH = -1, lastT = -1, lastK = -1;
+    function apply() {
+      const h = Math.round(vv.height), t = Math.max(0, Math.round(vv.offsetTop));
+      const k = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      if (h !== lastH) { root.style.setProperty('--app-height', h + 'px'); lastH = h; }
+      if (t !== lastT) { root.style.setProperty('--app-top', t + 'px'); lastT = t; }
+      if (k !== lastK) { root.style.setProperty('--kb', k + 'px'); lastK = k; }
+      document.body.classList.toggle('keyboard-open', h < baseHeight - 120);
+    }
+    let until = 0, looping = false;
+    function follow(ms) {
+      until = Math.max(until, performance.now() + ms);
+      if (looping) return; looping = true;
+      const tick = () => { apply(); const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName); if (typing || performance.now() < until) requestAnimationFrame(tick); else looping = false; };
+      requestAnimationFrame(tick);
+    }
+    vv.addEventListener('resize', () => follow(600)); vv.addEventListener('scroll', () => follow(600));
+    document.addEventListener('focusin', (e) => {
+      follow(1200);
+      // キーボードが出きったあと、入力欄を見える位置へ
+      const el = e.target;
+      if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName) && el.type !== 'date') setTimeout(() => { try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {} }, 350);
+    });
+    document.addEventListener('focusout', () => follow(1200));
+    window.addEventListener('orientationchange', () => { setTimeout(() => { baseHeight = vv.height; follow(600); }, 300); });
     apply();
   }
 
