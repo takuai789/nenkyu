@@ -107,6 +107,10 @@
   .off-add .chk input { width: 20px; height: 20px; accent-color: var(--accent); }
   .off-add .go { border: 0; border-radius: 12px; background: var(--accent); color: #fff; font: inherit; font-size: 15px; font-weight: 700; padding: 12px; cursor: pointer; }
   .hol-none { font-size: 12px; color: var(--secondary); margin-top: 4px; }
+  .to-plan { width: 100%; display: flex; align-items: center; justify-content: space-between; border: 0; background: var(--card); border-radius: 16px; padding: 16px; font: inherit; font-size: 15px; font-weight: 600; color: var(--ink); cursor: pointer; margin-bottom: 14px; }
+  .to-plan span { color: var(--tertiary); font-size: 20px; }
+  .to-plan:active { background: var(--fill); }
+  .cal { margin-top: 4px; }
   /* ホームのカレンダー */
   .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .cal-t { font-size: 15px; font-weight: 700; }
@@ -366,6 +370,11 @@
     <div class="scroll" id="homeScroll"></div>
   </div>
 
+  <!-- 予定：カレンダーとこれからの予定 -->
+  <div id="planView" class="view">
+    <div class="scroll" id="planScroll"></div>
+  </div>
+
   <!-- 目安：目標残し -->
   <div id="goalView" class="view">
     <div class="scroll" id="goalScroll"></div>
@@ -385,6 +394,10 @@
     <button class="tab active" data-tab="homeView">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0"/><path d="M12 12l5-4"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg>
       メーター
+    </button>
+    <button class="tab" data-tab="planView">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><circle cx="15.5" cy="15" r="1.4" fill="currentColor"/></svg>
+      予定
     </button>
     <button class="tab" data-tab="goalView">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></svg>
@@ -443,7 +456,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.23.0';
+  const APP_VERSION = '1.24.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -699,6 +712,7 @@
   function render() {
     $('#fyTitle').textContent = `${state.fy}年度`;
     renderHome();
+    renderPlans();
     renderPace('goal');
     renderPace('zero');
     renderSettings();
@@ -969,7 +983,7 @@
 
     const ents = liveEntries(fy);
     const c = calc(fy, yr, ents, today);
-    let html = (fyOf(today) === fy ? monthHolidaysHTML(today) : '') + adviceHTML(fy, yr, ents, c, today) + meterHTML(c) + calendarHTML(fy, today);
+    let html = (fyOf(today) === fy ? monthHolidaysHTML(today) : '') + adviceHTML(fy, yr, ents, c, today) + meterHTML(c);
     if (state.entries.size && bkDue()) html += `<div class="bk-card"><div class="bk-t">💾 ${bkText()}</div><div class="bk-d">データはこの端末の中だけにあります。月に1回、書き出して iCloud Drive に置いておくと安心です。</div><button class="bk-btn" id="bkNowBtn">いま書き出す（バックアップ）</button></div>`;
 
     // 今日（表示中の年度が今年度のときだけ）
@@ -1004,16 +1018,27 @@
       html += `</div>`;
     }
 
-    // これからの予定
-    const plans = ents.filter((e) => statusOf(e, today) === 'plan');
-    html += `<div class="section-label">これからの予定</div>`;
-    if (plans.length) {
-      html += `<div class="list">` + plans.slice(0, 6).map((e) => rowHTML(e, today)).join('') + `</div>`;
-      if (plans.length > 6) html += `<div class="note">ほか ${plans.length - 6}件は「予実」タブに</div>`;
-    }
-    html += `<button class="add-plan" id="addPlanBtn">＋ 予定を入れる</button>`;
+    // 予定の件数だけ出して、中身は「予定」タブへ
+    const nPlans = ents.filter((e) => statusOf(e, today) === 'plan').length;
+    html += `<button class="to-plan" data-tab-go="planView">📅 カレンダーとこれからの予定${nPlans ? `（${nPlans}件）` : ''}<span>›</span></button>`;
     el.innerHTML = html;
     const bb = el.querySelector('#bkNowBtn'); if (bb) bb.addEventListener('click', exportData);
+    renderPlans();
+  }
+
+  // ---------- 予定タブ：カレンダーとこれからの予定 ----------
+  function renderPlans() {
+    const el = $('#planScroll'); if (!el) return;
+    const fy = state.fy, today = todayStr();
+    if (!state.years.get(String(fy))) { el.innerHTML = `<div class="note" style="margin-top:16px">${fy}年度を開始すると使えます（メーターか設定から）。</div>`; return; }
+    const ents = liveEntries(fy);
+    const plans = ents.filter((e) => statusOf(e, today) === 'plan');
+    let html = calendarHTML(fy, today);
+    html += `<div class="section-label">これからの予定${plans.length ? `（${plans.length}件）` : ''}</div>`;
+    if (plans.length) html += `<div class="list">` + plans.map((e) => rowHTML(e, today)).join('') + `</div>`;
+    else html += `<div class="note">まだ予定はありません。カレンダーの日付か、下のボタンから入れられます。</div>`;
+    html += `<button class="add-plan" id="addPlanBtn">＋ 予定を入れる</button>`;
+    el.innerHTML = html;
     renderHomeCalBind(el);
   }
   // カレンダーの ‹ › （カードだけ差し替える）
@@ -1237,9 +1262,10 @@
 
   // ---------- 操作（イベント委譲） ----------
   document.addEventListener('click', async (ev) => {
-    const t = ev.target.closest('[data-cand],[data-quick],[data-take],[data-skip],[data-entry],[data-month],#addPlanBtn,#addPlanBtn2,#exportBtn,#importBtn,.tab');
+    const t = ev.target.closest('[data-cand],[data-quick],[data-take],[data-skip],[data-entry],[data-month],[data-tab-go],#addPlanBtn,#addPlanBtn2,#exportBtn,#importBtn,.tab');
     if (!t) return;
     if (t.classList.contains('tab')) return switchTab(t.dataset.tab);
+    if (t.dataset.tabGo) return switchTab(t.dataset.tabGo);
     if (t.dataset.cand) {
       const id = t.dataset.cand, amt = Number(t.dataset.amt);
       const prev = await saveEntry(id, { planAmt: amt });
