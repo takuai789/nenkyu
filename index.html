@@ -81,6 +81,22 @@
   .hol-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .hol-chip { font-size: 12px; font-weight: 600; background: var(--accent-soft); color: #127A6A; border-radius: 8px; padding: 4px 8px; }
   .hol-chip.past { background: var(--fill); color: var(--secondary); }
+  .hol-top.co { margin-top: 10px; padding-top: 8px; border-top: 0.5px solid var(--sep); }
+  .hol-n.co { color: #5B6BD6; }
+  .hol-chip.co { background: #E6E9FB; color: #3F4DB8; }
+  .hol-chip.co.past { background: var(--fill); color: var(--secondary); }
+  /* 設定：会社の休み */
+  .off-row { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 0.5px solid var(--sep); }
+  .off-row .when { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 96px; }
+  .off-row .nm { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .off-row .yr { font-size: 11px; color: #3F4DB8; background: #E6E9FB; border-radius: 6px; padding: 2px 6px; flex-shrink: 0; }
+  .off-row .del { border: 0; background: none; color: #D12A20; font: inherit; font-size: 14px; padding: 4px 6px; cursor: pointer; flex-shrink: 0; }
+  .off-add { padding: 12px 14px; display: grid; gap: 8px; }
+  .off-add input[type=text], .off-add input[type=date] { width: 100%; min-width: 0; font: inherit; font-size: 16px; border: 0; background: var(--fill); border-radius: 10px; padding: 10px 12px; color: var(--ink); -webkit-appearance: none; }
+  .off-add .two { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 6px; align-items: center; font-size: 13px; color: var(--secondary); }
+  .off-add .chk { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .off-add .chk input { width: 20px; height: 20px; accent-color: var(--accent); }
+  .off-add .go { border: 0; border-radius: 12px; background: var(--accent); color: #fff; font: inherit; font-size: 15px; font-weight: 700; padding: 12px; cursor: pointer; }
   .hol-none { font-size: 12px; color: var(--secondary); margin-top: 4px; }
   .section-label { font-size: 13px; color: var(--secondary); margin: 6px 4px 8px; font-weight: 500; }
 
@@ -389,7 +405,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.17.0';
+  const APP_VERSION = '1.18.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -403,6 +419,7 @@
   const fmt = (n) => (Math.round(n * 10) / 10).toString();
   const amtLabel = (a) => a === 1 ? '全休' : a === 0.5 ? '半休' : '';
 
+  const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   // ---------- 祝日（外部データなし・祝日法ルールで計算） ----------
   const _holCache = new Map();
   function nthMonday(y, m, n) { // m: 1-12
@@ -467,11 +484,39 @@
     for (let d = 1; d <= days; d++) { const s = `${y}-${pad(m)}-${pad(d)}`; if (isHoliday(s)) list.push(s); }
     const weekday = list.filter((s) => { const w = parse(s).getDay(); return w !== 0 && w !== 6; });
     const chips = list.map((s) => `<span class="hol-chip${today > s ? ' past' : ''}">${md(s)}（${wd(s)}）${holidayName(s)}</span>`).join('');
+    // 会社の休み（土日・祝日と重ならない日だけ数える）
+    const offDays = [];
+    for (let d = 1; d <= days; d++) {
+      const s = `${y}-${pad(m)}-${pad(d)}`; const o = companyOff(s);
+      if (o) offDays.push({ s, o });
+    }
+    const offCount = offDays.filter(({ s }) => { const w = parse(s).getDay(); return w !== 0 && w !== 6 && !isHoliday(s); }).length;
+    const groups = [];   // 同じ設定の連続した日はまとめて表示
+    for (const x of offDays) {
+      const g = groups[groups.length - 1];
+      if (g && g.o === x.o) g.to = x.s; else groups.push({ o: x.o, from: x.s, to: x.s });
+    }
+    const offChips = groups.map((g) => `<span class="hol-chip co${today > g.to ? ' past' : ''}">${md(g.from)}${g.to !== g.from ? '〜' + md(g.to) : `（${wd(g.from)}）`} ${esc(g.o.name)}</span>`).join('');
     return `<div class="card hol"><div class="hol-top"><span class="hol-l">${m}月の祝日</span><span class="hol-n">${weekday.length}<small>日</small></span></div>
       ${list.length ? `<div class="hol-chips">${chips}</div>` : '<div class="hol-none">今月は祝日がありません</div>'}
-      ${list.length > weekday.length ? '<div class="hol-none">土日と重なる祝日は数に入れていません</div>' : ''}</div>`;
+      ${offDays.length ? `<div class="hol-top co"><span class="hol-l">会社の休み</span><span class="hol-n co">${offCount}<small>日</small></span></div><div class="hol-chips">${offChips}</div>` : ''}
+      ${list.length > weekday.length || offDays.length > offCount ? '<div class="hol-none">土日（会社の休みは祝日も）と重なる日は数に入れていません</div>' : ''}</div>`;
   }
-  const isBizDay = (s) => { const w = parse(s).getDay(); return w !== 0 && w !== 6 && !isHoliday(s); };
+  // 会社の休み（年末年始・創立記念日など）。settings.offs = [{id, name, from, to, yearly}]
+  // yearly のとき from/to は 'MM-DD'、そうでなければ 'YYYY-MM-DD'
+  const getOffs = () => { const st = state.years.get('settings'); return st && Array.isArray(st.offs) ? st.offs : []; };
+  function companyOff(s) {
+    const mmdd = s.slice(5);
+    for (const o of getOffs()) {
+      const to = o.to || o.from;
+      if (o.yearly) {
+        const hit = o.from <= to ? (mmdd >= o.from && mmdd <= to) : (mmdd >= o.from || mmdd <= to); // 年をまたぐ（12/29〜1/3）
+        if (hit) return o;
+      } else if (s >= o.from && s <= to) return o;
+    }
+    return null;
+  }
+  const isBizDay = (s) => { const w = parse(s).getDay(); return w !== 0 && w !== 6 && !isHoliday(s) && !companyOff(s); };
 
   // 年度末（3/31）までの残り営業日。fromStr を含む。
   function bizDaysBetween(fromStr, toStr) {
@@ -577,6 +622,11 @@
   // 共通設定（years ストアに id:'settings' で保存。内部キーは変えない）
   const DEFAULT_GRANT = 20;
   const getGrant = () => { const st = state.years.get('settings'); return st && st.grant != null ? st.grant : DEFAULT_GRANT; };
+  async function saveOffs(offs) {
+    const next = Object.assign({}, state.years.get('settings') || { id: 'settings' }, { offs, updatedAt: Date.now() });
+    state.years.set('settings', next);
+    await put('years', next);
+  }
   async function saveGrant(v) {
     const next = Object.assign({}, state.years.get('settings') || { id: 'settings' }, { grant: v, updatedAt: Date.now() });
     state.years.set('settings', next);
@@ -971,6 +1021,21 @@
     html += `<div class="section-label">年度の開始</div><div class="list">
         ${stepperRow('grant', '毎年の付与日数', '開始時に前年度の残りに足す', getGrant())}
       </div><div class="note">新しい年度を開くと「前年度の残り＋付与日数」が年休数の初期値になります。開始前に手で直せます。</div>`;
+    const offs = getOffs();
+    const offWhen = (o) => {
+      const f = o.yearly ? o.from.replace('-', '/').replace(/^0/, '').replace('/0', '/') : md(o.from);
+      const t = o.to && o.to !== o.from ? (o.yearly ? o.to.replace('-', '/').replace(/^0/, '').replace('/0', '/') : md(o.to)) : '';
+      return f + (t ? '〜' + t : '');
+    };
+    html += `<div class="section-label">会社の休み（祝日以外）</div><div class="list">
+      ${offs.map((o) => `<div class="off-row"><span class="when">${offWhen(o)}</span><span class="nm">${esc(o.name)}</span>${o.yearly ? '<span class="yr">毎年</span>' : ''}<button class="del" data-offdel="${o.id}">削除</button></div>`).join('')}
+      <div class="off-add">
+        <input type="text" id="offName" placeholder="名前（例：年末年始、創立記念日）" maxlength="20">
+        <div class="two"><input type="date" id="offFrom"><span>〜</span><input type="date" id="offTo"></div>
+        <label class="chk"><input type="checkbox" id="offYearly" checked>毎年おなじ日</label>
+        <button class="go" id="offAdd">追加</button>
+      </div>
+    </div><div class="note">1日だけなら終わりの日は空のままで大丈夫です。登録した日は営業日から外れるので、「残り営業日」「何営業日に1回」「候補日」にも反映されます。</div>`;
     html += `<div class="section-label">バックアップ</div><div class="list">
       <button class="set-btn" id="exportBtn">データを書き出す（バックアップ）</button>
       <button class="set-btn" id="importBtn">データを取り込む</button>
@@ -982,6 +1047,28 @@
       if (key === 'grant') { await saveGrant(val); renderHome(); renderSettings(); }
     });
     bindSetup(el);
+    // 会社の休み
+    el.querySelector('#offAdd').addEventListener('click', async () => {
+      const name = el.querySelector('#offName').value.trim();
+      const from = el.querySelector('#offFrom').value;
+      let to = el.querySelector('#offTo').value || from;
+      const yearly = el.querySelector('#offYearly').checked;
+      if (!from) { toast('始まりの日を選んでください'); return; }
+      if (!name) { toast('名前を入れてください'); return; }
+      if (!yearly && to < from) { toast('終わりの日は始まりの日より後にしてください'); return; }
+      const o = { id: 'o' + Date.now().toString(36), name, yearly,
+        from: yearly ? from.slice(5) : from, to: yearly ? to.slice(5) : to };
+      await saveOffs([...getOffs(), o]);
+      renderSettings(); renderHome(); renderPace('goal'); renderPace('zero');
+      toast(`「${name}」を追加しました`);
+    });
+    el.querySelectorAll('[data-offdel]').forEach((b) => b.addEventListener('click', async () => {
+      if (b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'もう1回'; setTimeout(() => { b.dataset.armed = ''; b.textContent = '削除'; }, 3000); return; }
+      const o = getOffs().find((x) => x.id === b.dataset.offdel);
+      await saveOffs(getOffs().filter((x) => x.id !== b.dataset.offdel));
+      renderSettings(); renderHome(); renderPace('goal'); renderPace('zero');
+      if (o) toast(`「${o.name}」を消しました`);
+    }));
   }
 
   // ---------- ステッパー ----------
