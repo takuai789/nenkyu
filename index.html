@@ -415,7 +415,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.21.0';
+  const APP_VERSION = '1.22.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -1052,7 +1052,7 @@
     html += `<div class="section-label">会社の休み（祝日以外）</div><div class="list">
       ${offs.map((o) => `<div class="off-row"><span class="when">${offWhen(o)}</span><span class="nm">${esc(o.name)}</span>${o.yearly || (o.kind === 'nth' && o.month) ? '<span class="yr">毎年</span>' : ''}<button class="del" data-offdel="${o.id}">削除</button></div>`).join('')}
       <div class="off-add">
-        <input type="text" id="offName" placeholder="名前（例：年末年始、創立記念日）" maxlength="20">
+        <input type="text" id="offLabel" placeholder="どんな休み？（例：年末年始、創立記念日）" maxlength="20" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
         <div class="off-kind"><button data-okind="date" class="on">日付で</button><button data-okind="nth">曜日で（第2金曜など）</button></div>
         <div id="offDateBox">
           <div class="two"><label class="dt"><span>始まりの日</span><input type="date" id="offFrom"></label><span>〜</span><label class="dt"><span>終わりの日（任意）</span><input type="date" id="offTo"></label></div>
@@ -1088,9 +1088,9 @@
       el.querySelector('#offNthBox').style.display = offKind === 'nth' ? '' : 'none';
     }));
     el.querySelector('#offAdd').addEventListener('click', async () => {
-      const name = el.querySelector('#offName').value.trim();
+      const name = el.querySelector('#offLabel').value.trim();
       if (offKind === 'nth') {
-        if (!name) { toast('名前を入れてください'); return; }
+        if (!name) { toast('休みの名前を入れてください'); return; }
         const o = { id: 'o' + Date.now().toString(36), name, kind: 'nth',
           month: +el.querySelector('#offMonth').value, nth: +el.querySelector('#offNth').value, dow: +el.querySelector('#offDow').value };
         await saveOffs([...getOffs(), o]);
