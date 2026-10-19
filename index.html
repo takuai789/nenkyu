@@ -110,7 +110,12 @@
   .rate.mid   { background: #FFF5D6; } .rate.mid .badge   { background: #E0A800; } .rate.mid .txt   { color: #8A6800; }
   .rate.easy  { background: var(--accent-soft); } .rate.easy .badge { background: var(--accent); } .rate.easy .txt { color: #127A6A; }
   .rate.over  { background: #FFE3E1; } .rate.over .badge  { background: #D12A20; } .rate.over .txt  { color: #D12A20; }
+  .rate .txt .cap { display: block; font-size: 11px; font-weight: 700; opacity: .75; margin-bottom: -2px; }
+  .rate.sub { margin-top: 8px; padding: 8px 14px; }
+  .rate.sub .badge { font-size: 12px; padding: 4px 10px; }
+  .rate.sub .txt { font-size: 13px; } .rate.sub .txt b { font-size: 17px; }
   .gauge { position: relative; margin-top: 12px; }
+  .gauge .pin.hollow { background: #fff; border: 2px solid var(--ink); width: 8px; margin-left: -4px; box-sizing: border-box; box-shadow: none; }
   .gauge .zones { display: flex; height: 10px; border-radius: 5px; overflow: hidden; }
   .gauge .zones span:nth-child(1) { flex: 2; background: #F8B590; }
   .gauge .zones span:nth-child(2) { flex: 1; background: #F3D777; }
@@ -372,7 +377,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.12.0';
+  const APP_VERSION = '1.13.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -610,34 +615,43 @@
   // 予定も含めて、年度末まで月に何日休めるか（予定＋まだ使える日数 ÷ 残りの月数）
   // 2日未満＝少しシビア／2〜3日未満＝ふつう／3日以上＝余裕あり
   const BIZ_PER_MONTH = 20.4;   // 1か月あたりの営業日（年245日÷12）
-  function monthRate(c) {
+  // keep＝年度末に残す日数（目標 or 0＝使い切り）
+  function monthRate(c, keep) {
     const p = pace(c);
     if (!p || p.biz <= 0) return null;
     const months = Math.max(p.biz / BIZ_PER_MONTH, 0.5);
-    const days = c.pending + Math.max(0, c.free);
+    const free = c.projected - keep;
+    const days = c.pending + Math.max(0, free);
     const per = days / months;
-    const level = c.free < 0 ? 'over' : per < 2 ? 'tight' : per < 3 ? 'mid' : 'easy';
-    return { per, months, days, level };
+    const level = free < 0 ? 'over' : per < 2 ? 'tight' : per < 3 ? 'mid' : 'easy';
+    return { per, months, days, free, level };
+  }
+  const RATE_LABEL = { tight: '少しシビア', mid: 'ふつう', easy: '余裕あり', over: 'オーバー' };
+  function rateRow(r, cap, sub) {
+    const n = Math.round(r.per * 10) / 10;
+    const txt = r.level === 'over'
+      ? `予定を全部取ると <b>${fmt(-r.free)}</b>日 不足`
+      : `予定込みで 月<b>${n}</b>日 休める`;
+    return `<div class="rate ${r.level}${sub ? ' sub' : ''}"><span class="badge">${RATE_LABEL[r.level]}</span><span class="txt"><span class="cap">${cap}</span>${txt}</span></div>`;
   }
   function rateHTML(c) {
-    const r = monthRate(c);
-    if (!r) return c.free < 0 ? `<div class="rate over"><span class="badge">目標オーバー</span><span class="txt">${fmt(-c.free)}日 取りすぎ</span></div>` : '';
-    const n = Math.round(r.per * 10) / 10;
-    const label = { tight: '少しシビア', mid: 'ふつう', easy: '余裕あり', over: '目標オーバー' }[r.level];
-    const txt = r.level === 'over'
-      ? `予定を全部取ると、目標より <b>${fmt(-c.free)}</b>日 足りません`
-      : `予定込みで 月<b>${n}</b>日 休める`;
+    const rt = monthRate(c, c.target);
+    if (!rt) return c.free < 0 ? `<div class="rate over"><span class="badge">オーバー</span><span class="txt">目標より ${fmt(-c.free)}日 取りすぎ</span></div>` : '';
+    const both = c.target > 0;
+    const r0 = both ? monthRate(c, 0) : null;
     const MAX = 4;   // ゲージの右端（4日/月）
-    const pinLeft = Math.min(Math.max(r.per, 0), MAX) / MAX * 100;
-    const head = `<div class="rate ${r.level}"><span class="badge">${label}</span><span class="txt">${txt}</span></div>`;
-    if (r.level === 'over') return head;
-    return head + `
+    const pos = (r) => Math.min(Math.max(r.per, 0), MAX) / MAX * 100;
+    let html = rateRow(rt, both ? `目標の${fmt(c.target)}日を残すなら` : 'ちょうど使い切るなら', false);
+    if (both) html += rateRow(r0, 'ちょうど使い切るなら', true);
+    html += `
       <div class="gauge">
         <div class="zones"><span></span><span></span><span></span></div>
-        <div class="pin" style="left:${pinLeft}%"></div>
+        ${both && r0.level !== 'over' ? `<div class="pin hollow" style="left:${pos(r0)}%"></div>` : ''}
+        ${rt.level !== 'over' ? `<div class="pin" style="left:${pos(rt)}%"></div>` : ''}
         <div class="ticks"><span class="l" style="left:0">0</span><span style="left:50%">月2日</span><span style="left:75%">月3日</span><span class="r" style="left:100%">4日〜</span></div>
       </div>
-      <div style="font-size:12px;color:var(--secondary);margin-top:2px;">（予定 ${fmt(c.pending)}日 ＋ まだ使える ${fmt(Math.max(0, c.free))}日）÷ 年度末まで約${Math.round(r.months * 10) / 10}か月。月2日未満は少しシビア、3日以上は余裕あり。</div>`;
+      <div style="font-size:12px;color:var(--secondary);margin-top:2px;">${both ? '針：■ 目標を残す　□ 使い切る。' : ''}（予定＋まだ使える日数）÷ 年度末まで約${Math.round(rt.months * 10) / 10}か月。月2日未満は少しシビア、3日以上は余裕あり。</div>`;
+    return html;
   }
 
   // 残り営業日と「何営業日に1回休めるか」
