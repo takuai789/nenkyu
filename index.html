@@ -410,7 +410,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.19.0';
+  const APP_VERSION = '1.20.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -1055,14 +1055,14 @@
         </div>
         <div id="offNthBox" style="display:none">
           <div class="three">
-            <select id="offMonth"><option value="0">毎月</option>${[...Array(12)].map((_, i) => `<option value="${i + 1}"${i === 3 ? ' selected' : ''}>${i + 1}月</option>`).join('')}</select>
+            <select id="offMonth"><option value="0">毎月</option>${[...Array(12)].map((_, i) => `<option value="${i + 1}"${i === 0 ? ' selected' : ''}>${i + 1}月</option>`).join('')}</select>
             <select id="offNth">${[1, 2, 3, 4].map((n) => `<option value="${n}"${n === 2 ? ' selected' : ''}>第${n}</option>`).join('')}<option value="-1">最終</option></select>
             <select id="offDow">${DOW.map((w, i) => `<option value="${i}"${i === 5 ? ' selected' : ''}>${w}曜日</option>`).join('')}</select>
           </div>
         </div>
         <button class="go" id="offAdd">追加</button>
       </div>
-    </div><div class="note">「曜日で」は、4月の第2金曜日のように毎年（または毎月）決まった曜日の休みに。1日だけなら終わりの日は空のままで大丈夫です。登録した日は営業日から外れるので、「残り営業日」「何営業日に1回」「候補日」にも反映されます。</div>`;
+    </div><div class="note">「曜日で」は、1月の第2金曜日のように毎年（または毎月）決まった曜日の休みに。1日だけなら終わりの日は空のままで大丈夫です。登録した日は営業日から外れるので、「残り営業日」「何営業日に1回」「候補日」にも反映されます。</div>`;
     html += `<div class="section-label">バックアップ</div><div class="list">
       <button class="set-btn" id="exportBtn">データを書き出す（バックアップ）</button>
       <button class="set-btn" id="importBtn">データを取り込む</button>
