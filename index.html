@@ -98,6 +98,14 @@
   .off-add .dt span { font-size: 11px; color: var(--secondary); padding-left: 2px; }
   .off-add input[type=date] { display: block; min-height: 44px; text-align: left; }
   .off-add .two { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 6px; align-items: end; font-size: 13px; color: var(--secondary); }
+  .tab-tg { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 0.5px solid var(--sep); cursor: pointer; }
+  .tab-tg:last-child { border-bottom: 0; }
+  .tab-tg span { font-size: 15px; }
+  .tab-tg small { display: block; font-size: 12px; color: var(--secondary); margin-top: 2px; }
+  .sw { -webkit-appearance: none; appearance: none; flex-shrink: 0; width: 51px; height: 31px; border-radius: 16px; background: #E9E9EA; position: relative; cursor: pointer; transition: background .2s; margin: 0; }
+  .sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: transform .2s; }
+  .sw:checked { background: var(--accent); }
+  .sw:checked::after { transform: translateX(20px); }
   .off-kind { display: flex; background: var(--fill); border-radius: 10px; padding: 2px; }
   .off-kind button { flex: 1; border: 0; background: none; font: inherit; font-size: 14px; padding: 8px 0; border-radius: 8px; color: var(--ink); cursor: pointer; }
   .off-kind button.on { background: var(--card); box-shadow: 0 1px 4px rgba(0,0,0,.12); font-weight: 700; }
@@ -456,7 +464,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.25.0';
+  const APP_VERSION = '1.26.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -716,6 +724,7 @@
     renderPace('goal');
     renderPace('zero');
     renderSettings();
+    applyTabVisibility();
   }
 
   // 共通設定（years ストアに id:'settings' で保存。内部キーは変えない）
@@ -734,6 +743,18 @@
     await put('years', next);
   }
   const lostOf = (c) => Math.max(0, c.projected - getCarryCap());
+  // 下のタブの表示（目標残し・使い切りは隠せる）。settings.hideTabs = { goalView: true, zeroView: false }
+  const getHideTabs = () => { const st = state.years.get('settings'); return (st && st.hideTabs) || {}; };
+  async function saveHideTabs(h) {
+    const next = Object.assign({}, state.years.get('settings') || { id: 'settings' }, { hideTabs: h, updatedAt: Date.now() });
+    state.years.set('settings', next);
+    await put('years', next);
+  }
+  function applyTabVisibility() {
+    const h = getHideTabs();
+    $$('.tab').forEach((b) => { b.style.display = h[b.dataset.tab] ? 'none' : ''; });
+    if (h[state.tab]) switchTab('homeView');
+  }
   async function saveGrant(v) {
     const next = Object.assign({}, state.years.get('settings') || { id: 'settings' }, { grant: v, updatedAt: Date.now() });
     state.years.set('settings', next);
@@ -1186,6 +1207,11 @@
         <button class="go" id="offAdd">追加</button>
       </div>
     </div><div class="note">「曜日で」は、1月の第2金曜日のように毎年（または毎月）決まった曜日の休みに。1日だけなら終わりの日は空のままで大丈夫です。登録した日は営業日から外れるので、「残り営業日」「何営業日に1回」「候補日」にも反映されます。</div>`;
+    const ht = getHideTabs();
+    html += `<div class="section-label">下のタブ</div><div class="list">
+      <label class="tab-tg"><span>目標残し<small>年度末に目標を残すペースの表</small></span><input type="checkbox" class="sw" data-tabtoggle="goalView" ${ht.goalView ? '' : 'checked'}></label>
+      <label class="tab-tg"><span>使い切り<small>年度末にちょうど0になるペースの表</small></span><input type="checkbox" class="sw" data-tabtoggle="zeroView" ${ht.zeroView ? '' : 'checked'}></label>
+    </div><div class="note">オフにしたタブは下のバーから消えます。いつでも戻せます。</div>`;
     html += `<div class="section-label">バックアップ</div><div class="list">
       <button class="set-btn" id="exportBtn">データを書き出す（バックアップ）</button>
       <button class="set-btn" id="importBtn">データを取り込む</button>
@@ -1198,6 +1224,12 @@
       if (key === 'carryCap') { await saveCarryCap(val); renderHome(); }
     });
     bindSetup(el);
+    // 下のタブの表示
+    el.querySelectorAll('[data-tabtoggle]').forEach((cb) => cb.addEventListener('change', async () => {
+      const h = Object.assign({}, getHideTabs(), { [cb.dataset.tabtoggle]: !cb.checked });
+      await saveHideTabs(h);
+      applyTabVisibility();
+    }));
     // 会社の休み
     let offKind = 'date';
     el.querySelectorAll('[data-okind]').forEach((b) => b.addEventListener('click', () => {
