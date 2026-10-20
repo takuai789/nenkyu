@@ -98,6 +98,14 @@
   .off-add .dt span { font-size: 11px; color: var(--secondary); padding-left: 2px; }
   .off-add input[type=date] { display: block; min-height: 44px; text-align: left; }
   .off-add .two { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 6px; align-items: end; font-size: 13px; color: var(--secondary); }
+  .drift { border: 1.5px solid #5B6BD6; }
+  .dr-t { font-size: 15px; font-weight: 800; color: #3F4DB8; margin-bottom: 6px; }
+  .dr-d { font-size: 14px; line-height: 1.6; }
+  .dr-w { font-size: 12px; color: #C27A00; margin-top: 6px; line-height: 1.5; }
+  .dr-b { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  .dr-b button { border: 0; border-radius: 10px; font: inherit; font-size: 14px; font-weight: 700; padding: 10px 14px; cursor: pointer; }
+  .dr-no { background: var(--fill); color: var(--secondary); }
+  .dr-go { background: #5B6BD6; color: #fff; }
   .tab-tg { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 0.5px solid var(--sep); cursor: pointer; }
   .tab-tg:last-child { border-bottom: 0; }
   .tab-tg span { font-size: 15px; }
@@ -464,7 +472,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.26.0';
+  const APP_VERSION = '1.27.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -771,6 +779,44 @@
     return { remain: Math.max(0, prev.total - used), target: prev.target, waits };
   }
 
+  // 前年度の実績が変わって、今年度の繰越が開始時とずれたか
+  function carryDrift(fy) {
+    const yr = state.years.get(String(fy));
+    const info = prevYearInfo(fy);
+    if (!yr || !info) return null;
+    const now = Math.min(info.remain, getCarryCap());
+    const base = yr.startCarry != null ? yr.startCarry : Math.max(0, yr.total - getGrant()); // 古いデータは「年休数−付与」を繰越とみなす
+    const diff = Math.round((now - base) * 2) / 2;
+    if (Math.abs(diff) < 0.5 || yr.carryAck === now) return null;
+    return { now, base, diff, newTotal: Math.max(0, yr.total + diff), waits: info.waits };
+  }
+  function carryDriftHTML(fy) {
+    const d = carryDrift(fy); if (!d) return '';
+    const yr = state.years.get(String(fy));
+    return `<div class="card drift">
+      <div class="dr-t">${fy - 1}年度の実績が変わりました</div>
+      <div class="dr-d">繰り越す日数が <b>${fmt(d.base)}日 → ${fmt(d.now)}日</b> になりました。<br>今年度の年休数を <b>${fmt(yr.total)}日 → ${fmt(d.newTotal)}日</b> に直しますか？</div>
+      ${d.waits ? `<div class="dr-w">${fy - 1}年度にまだ未確定の予定が${d.waits}件あります。確定すると、また変わることがあります。</div>` : ''}
+      <div class="dr-b"><button class="dr-no" data-drift="ack">このままにする</button><button class="dr-go" data-drift="apply">${fmt(d.newTotal)}日に更新</button></div>
+    </div>`;
+  }
+  function bindDrift(root) {
+    root.querySelectorAll('[data-drift]').forEach((b) => b.addEventListener('click', async () => {
+      const fy = state.fy, d = carryDrift(fy); if (!d) return;
+      const yr = state.years.get(String(fy));
+      if (b.dataset.drift === 'apply') {
+        const before = yr.total;
+        await saveYear(fy, { total: d.newTotal, startCarry: d.now, carryAck: null });
+        render();
+        toast(`年休数を${fmt(before)}日 → ${fmt(d.newTotal)}日に更新しました`, async () => { await saveYear(fy, { total: before, startCarry: d.base }); render(); });
+      } else {
+        await saveYear(fy, { carryAck: d.now });
+        render();
+        toast('このままにしました（また実績が変わったらお知らせします）');
+      }
+    }));
+  }
+
   function setupCardHTML(fy) {
     const info = prevYearInfo(fy);
     const grant = getGrant();
@@ -1005,7 +1051,7 @@
     const ents = liveEntries(fy);
     const c = calc(fy, yr, ents, today);
     // 並び：今月の祝日 → 今日、休む → いまの残り → アドバイス（候補日）
-    let html = (fyOf(today) === fy ? monthHolidaysHTML(today) : '') + '<!--TODAY-->' + meterHTML(c) + adviceHTML(fy, yr, ents, c, today);
+    let html = carryDriftHTML(fy) + (fyOf(today) === fy ? monthHolidaysHTML(today) : '') + '<!--TODAY-->' + meterHTML(c) + adviceHTML(fy, yr, ents, c, today);
     if (state.entries.size && bkDue()) html += `<div class="bk-card"><div class="bk-t">💾 ${bkText()}</div><div class="bk-d">データはこの端末の中だけにあります。月に1回、書き出して iCloud Drive に置いておくと安心です。</div><button class="bk-btn" id="bkNowBtn">いま書き出す（バックアップ）</button></div>`;
 
     // 今日（表示中の年度が今年度のときだけ）。祝日カードのすぐ下に差し込む
@@ -1048,6 +1094,7 @@
     html += `<button class="to-plan" data-tab-go="planView">📅 カレンダーとこれからの予定${nPlans ? `（${nPlans}件）` : ''}<span>›</span></button>`;
     el.innerHTML = html;
     const bb = el.querySelector('#bkNowBtn'); if (bb) bb.addEventListener('click', exportData);
+    bindDrift(el);
     renderPlans();
   }
 
@@ -1168,7 +1215,7 @@
     const el = $('#settingsScroll');
     const fy = state.fy;
     const yr = state.years.get(String(fy));
-    let html = `<div class="section-label">${fy}年度（${fy}/4〜${fy + 1}/3）</div>`;
+    let html = carryDriftHTML(fy) + `<div class="section-label">${fy}年度（${fy}/4〜${fy + 1}/3）</div>`;
     if (yr) {
       html += `<div class="list">
         ${stepperRow('total', '年休数', '付与＋繰越', yr.total)}
@@ -1224,6 +1271,7 @@
       if (key === 'carryCap') { await saveCarryCap(val); renderHome(); }
     });
     bindSetup(el);
+    bindDrift(el);
     // 下のタブの表示
     el.querySelectorAll('[data-tabtoggle]').forEach((cb) => cb.addEventListener('change', async () => {
       const h = Object.assign({}, getHideTabs(), { [cb.dataset.tabtoggle]: !cb.checked });
@@ -1290,7 +1338,10 @@
     go.addEventListener('click', async () => {
       const total = Number(root.querySelector('[data-key="setupTotal"] .v').dataset.v);
       const target = Number(root.querySelector('[data-key="setupTarget"] .v').dataset.v);
-      await saveYear(state.fy, { total, target });
+      const info = prevYearInfo(state.fy);
+      // 開始時点の繰越を覚えておく（あとで前年度の実績が変わったら、差分だけ年休数を直せるように）
+      const startCarry = info ? Math.min(info.remain, getCarryCap()) : 0;
+      await saveYear(state.fy, { total, target, startCarry });
       render();
       toast(`${state.fy}年度を開始しました`);
     });
