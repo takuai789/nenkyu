@@ -106,6 +106,21 @@
   .dr-b button { border: 0; border-radius: 10px; font: inherit; font-size: 14px; font-weight: 700; padding: 10px 14px; cursor: pointer; }
   .dr-no { background: var(--fill); color: var(--secondary); }
   .dr-go { background: #5B6BD6; color: #fff; }
+  .rk-seg { margin: 4px 0 10px; }
+  .rk-head { display: flex; align-items: center; justify-content: space-between; margin: 0 4px 8px; font-size: 13px; color: var(--secondary); }
+  .rk-sort { border: 0; background: none; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 0; }
+  .rk-row { display: grid; grid-template-columns: 26px 54px minmax(0,1fr) 56px; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 0.5px solid var(--sep); }
+  .rk-row:last-child { border-bottom: 0; }
+  .rk-row.cur { background: var(--accent-soft); }
+  .rk-row.past { opacity: .55; }
+  .rk-n { width: 24px; height: 24px; border-radius: 50%; background: var(--fill); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: var(--secondary); }
+  .rk-n.top { background: var(--accent); color: #fff; }
+  .rk-m { font-size: 16px; font-weight: 700; } .rk-m small { display: block; font-size: 10px; font-weight: 500; color: var(--tertiary); }
+  .rk-bar { position: relative; height: 26px; display: flex; align-items: center; }
+  .rk-bar i { position: absolute; left: 0; top: 2px; height: 10px; border-radius: 5px; background: #9FD9CD; }
+  .rk-bar i.lv { background: repeating-linear-gradient(-45deg, #F3D777 0 3px, #FBEBB0 3px 6px); border-radius: 0 5px 5px 0; }
+  .rk-bar em { position: absolute; left: 0; bottom: -1px; font-style: normal; font-size: 10px; color: var(--secondary); white-space: nowrap; }
+  .rk-v { text-align: right; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; } .rk-v small { font-size: 11px; margin-left: 1px; }
   .tab-tg { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 0.5px solid var(--sep); cursor: pointer; }
   .tab-tg:last-child { border-bottom: 0; }
   .tab-tg span { font-size: 15px; }
@@ -391,6 +406,11 @@
     <div class="scroll" id="planScroll"></div>
   </div>
 
+  <!-- 営業日ランキング -->
+  <div id="rankView" class="view">
+    <div class="scroll" id="rankScroll"></div>
+  </div>
+
   <!-- 目安：目標残し -->
   <div id="goalView" class="view">
     <div class="scroll" id="goalScroll"></div>
@@ -422,6 +442,10 @@
     <button class="tab" data-tab="zeroView">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="16" height="10" rx="2.5"/><path d="M21 10.5v3"/><path d="M8 12h6" opacity=".5"/></svg>
       使い切り
+    </button>
+    <button class="tab" data-tab="rankView">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><rect x="5" y="11" width="3.2" height="6.5" rx="1"/><rect x="10.4" y="6" width="3.2" height="11.5" rx="1"/><rect x="15.8" y="13.5" width="3.2" height="4" rx="1"/></svg>
+      営業日
     </button>
     <button class="tab" data-tab="settingsView">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
@@ -472,7 +496,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.27.0';
+  const APP_VERSION = '1.28.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -729,6 +753,7 @@
     $('#fyTitle').textContent = `${state.fy}年度`;
     renderHome();
     renderPlans();
+    renderRank();
     renderPace('goal');
     renderPace('zero');
     renderSettings();
@@ -1098,6 +1123,57 @@
     renderPlans();
   }
 
+  // ---------- 営業日ランキング：年度の各月の営業日数（祝日・会社の休みを除く） ----------
+  function monthBizRows(fy) {
+    const rows = [];
+    for (let i = 0; i < 12; i++) {
+      const m = ((3 + i) % 12) + 1, y = m >= 4 ? fy : fy + 1;
+      const days = new Date(y, m, 0).getDate();
+      let weekday = 0, hol = 0, co = 0, biz = 0, leave = 0;
+      for (let d = 1; d <= days; d++) {
+        const s = `${y}-${pad(m)}-${pad(d)}`, w = parse(s).getDay();
+        if (w === 0 || w === 6) continue;
+        weekday++;
+        if (isHoliday(s)) { hol++; continue; }
+        if (companyOff(s)) { co++; continue; }
+        biz++;
+        const e = state.entries.get(s);
+        if (e && !e.deleted) leave += e.actAmt != null ? e.actAmt : (e.planAmt || 0);
+      }
+      rows.push({ key: `${y}-${pad(m)}`, y, m, weekday, hol, co, biz, leave, work: biz - leave });
+    }
+    return rows;
+  }
+  function renderRank() {
+    const el = $('#rankScroll'); if (!el) return;
+    const fy = state.fy, cur = todayStr().slice(0, 7);
+    const by = state.rankBy || 'biz';                 // biz=営業日 / work=年休を引いた出勤日
+    const asc = !!state.rankAsc;
+    const rows = monthBizRows(fy);
+    const val = (r) => by === 'work' ? r.work : r.biz;
+    const sorted = rows.slice().sort((p, q) => (asc ? val(p) - val(q) : val(q) - val(p)) || (p.key < q.key ? -1 : 1));
+    const max = Math.max(...rows.map((r) => r.weekday), 1);
+    const total = rows.reduce((s, r) => s + r.biz, 0);
+    let rank = 0, prev = null;
+    const items = sorted.map((r, i) => {
+      if (val(r) !== prev) { rank = i + 1; prev = val(r); }
+      const sub = [r.hol ? `祝日 ${r.hol}` : '', r.co ? `会社 ${r.co}` : '', r.leave ? `年休 ${fmt(r.leave)}` : ''].filter(Boolean).join('・');
+      return `<div class="rk-row${r.key === cur ? ' cur' : ''}${r.key < cur ? ' past' : ''}">
+        <span class="rk-n${rank <= 3 ? ' top' : ''}">${rank}</span>
+        <span class="rk-m">${r.m}月<small>${r.y}</small></span>
+        <span class="rk-bar"><i style="width:${(by === 'work' ? r.work : r.biz) / max * 100}%"></i>${by === 'work' && r.leave ? `<i class="lv" style="left:${r.work / max * 100}%;width:${r.leave / max * 100}%"></i>` : ''}<em>${sub}</em></span>
+        <span class="rk-v">${fmt(val(r))}<small>日</small></span>
+      </div>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="seg rk-seg"><button data-rankby="biz" class="${by === 'biz' ? 'on' : ''}">営業日</button><button data-rankby="work" class="${by === 'work' ? 'on' : ''}">年休を引いた出勤日</button></div>
+      <div class="rk-head"><span>${fy}年度・${asc ? '少ない' : '多い'}順</span><button class="rk-sort" id="rankSort">${asc ? '多い順にする' : '少ない順にする'}</button></div>
+      <div class="list rk">${items}</div>
+      <div class="note">営業日＝土日・祝日・会社の休みを除いた日。年度の合計 <b>${total}</b> 営業日。${by === 'work' ? '出勤日は、そこから取った年休・入れてある予定を引いた日数です（半休は0.5日）。' : '数字の横は、その月に平日と重なった祝日・会社の休み・年休の日数です。'}</div>`;
+    el.querySelectorAll('[data-rankby]').forEach((b) => b.addEventListener('click', () => { state.rankBy = b.dataset.rankby; renderRank(); }));
+    el.querySelector('#rankSort').addEventListener('click', () => { state.rankAsc = !state.rankAsc; renderRank(); });
+  }
+
   // ---------- 予定タブ：カレンダーとこれからの予定 ----------
   function renderPlans() {
     const el = $('#planScroll'); if (!el) return;
@@ -1112,6 +1188,7 @@
     html += `<button class="add-plan" id="addPlanBtn">＋ 予定を入れる</button>`;
     el.innerHTML = html;
     renderHomeCalBind(el);
+    renderRank();
   }
   // カレンダーの ‹ › （カードだけ差し替える）
   function renderHomeCalBind(el) {
@@ -1258,6 +1335,7 @@
     html += `<div class="section-label">下のタブ</div><div class="list">
       <label class="tab-tg"><span>目標残し<small>年度末に目標を残すペースの表</small></span><input type="checkbox" class="sw" data-tabtoggle="goalView" ${ht.goalView ? '' : 'checked'}></label>
       <label class="tab-tg"><span>使い切り<small>年度末にちょうど0になるペースの表</small></span><input type="checkbox" class="sw" data-tabtoggle="zeroView" ${ht.zeroView ? '' : 'checked'}></label>
+      <label class="tab-tg"><span>営業日<small>月ごとの営業日数のランキング</small></span><input type="checkbox" class="sw" data-tabtoggle="rankView" ${ht.rankView ? '' : 'checked'}></label>
     </div><div class="note">オフにしたタブは下のバーから消えます。いつでも戻せます。</div>`;
     html += `<div class="section-label">バックアップ</div><div class="list">
       <button class="set-btn" id="exportBtn">データを書き出す（バックアップ）</button>
