@@ -212,6 +212,16 @@
   .rate.sub { margin-top: 8px; padding: 8px 14px; }
   .rate.sub .badge { font-size: 12px; padding: 4px 10px; }
   .rate.sub .txt { font-size: 13px; } .rate.sub .txt b { font-size: 17px; }
+  .whatif { margin-top: 10px; border: 1px solid var(--separator, #e5e5ea); border-radius: 12px; overflow: hidden; font-size: 13px; }
+  .whatif .wi-hd { padding: 8px 12px 4px; font-size: 12px; font-weight: 700; color: var(--secondary); }
+  .whatif table { width: 100%; border-collapse: collapse; }
+  .whatif th { font-size: 11px; font-weight: 600; color: var(--secondary); text-align: right; padding: 2px 12px 4px; }
+  .whatif th:first-child, .whatif td:first-child { text-align: left; }
+  .whatif td { padding: 6px 12px; border-top: 1px solid var(--separator, #e5e5ea); text-align: right; white-space: nowrap; font-weight: 600; }
+  .whatif td:first-child { font-weight: 600; color: var(--ink); }
+  .whatif td b { font-size: 16px; font-variant-numeric: tabular-nums; }
+  .whatif td .d { font-size: 11px; font-weight: 600; opacity: .7; margin-left: 3px; }
+  .whatif .tight { color: #B4461A; } .whatif .mid { color: #8A6800; } .whatif .easy { color: #127A6A; } .whatif .over { color: #D12A20; }
   .gauge { position: relative; margin-top: 12px; }
   .gauge .pin.hollow { background: #fff; border: 2px solid var(--ink); width: 8px; margin-left: -4px; box-sizing: border-box; box-shadow: none; }
   .gauge .zones { display: flex; height: 10px; border-radius: 5px; overflow: hidden; }
@@ -499,7 +509,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.29.0';
+  const APP_VERSION = '1.30.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -929,6 +939,22 @@
       : `月<b>${n}</b>日 休める`;
     return `<div class="rate ${r.level}${sub ? ' sub' : ''}"><span class="badge">${RATE_LABEL[r.level]}</span><span class="txt"><span class="cap">${cap}</span>${txt}</span></div>`;
   }
+  // きょう追加で休んだら（半休・全休）、月に休める日数がどう変わるか
+  function whatIfHTML(c, rt, r0) {
+    const rows = [[0.5, '半休'], [1, '全休']];
+    const cols = [[c.target, rt]];
+    if (r0) cols.push([0, r0]);
+    const cell = (keep, base, d) => {
+      const r = monthRate({ ...c, projected: c.projected - d }, keep);
+      if (!r) return '<td>—</td>';
+      if (r.level === 'over') return `<td class="over"><b>${fmt(-r.free)}</b>日 不足</td>`;
+      const n = Math.round(r.per * 10) / 10, b0 = Math.round(base.per * 10) / 10;
+      const diff = Math.round((n - b0) * 10) / 10;
+      return `<td class="${r.level}">月<b>${n}</b>日<span class="d">${diff < 0 ? '−' + (-diff) : '±0'}</span></td>`;
+    };
+    const head = cols.length > 1 ? `<tr><th></th><th>目標を残す</th><th>使い切る</th></tr>` : '';
+    return `<div class="whatif"><div class="wi-hd">きょう休んだら（いまの予定とは別に）</div><table>${head}${rows.map(([d, l]) => `<tr><td>${l}</td>${cols.map(([k, b]) => cell(k, b, d)).join('')}</tr>`).join('')}</table></div>`;
+  }
   function rateHTML(c) {
     const rt = monthRate(c, c.target);
     if (!rt) return c.free < 0 ? `<div class="rate over"><span class="badge">オーバー</span><span class="txt">目標より ${fmt(-c.free)}日 取りすぎ</span></div>` : '';
@@ -942,6 +968,7 @@
       : '年度末まで月に何日休めるか';
     let html = capNote + `<div class="rate-lead">${lead}</div>` + rateRow(rt, both ? `目標の${fmt(c.target)}日を残すなら` : 'ちょうど使い切るなら', false);
     if (both) html += rateRow(r0, 'ちょうど使い切るなら', true);
+    html += whatIfHTML(c, rt, both ? r0 : null);
     html += `
       <div class="gauge">
         <div class="zones"><span></span><span></span><span></span></div>
