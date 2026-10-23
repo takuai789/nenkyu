@@ -232,6 +232,21 @@
   .kr td em { display: block; font-style: normal; font-size: 11.5px; font-weight: 700; color: var(--accent); margin-top: -2px; }
   .kr td.none { font-size: 12.5px; }
   .kr-note { font-size: 11.5px; color: var(--secondary); line-height: 1.5; margin-top: 4px; }
+  .f5-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .f5-t { font-size: 15px; font-weight: 700; }
+  .f5-badge { font-size: 13px; font-weight: 800; color: #fff; border-radius: 999px; padding: 4px 11px; white-space: nowrap; }
+  .f5-ok .f5-badge { background: var(--accent); } .f5-mid .f5-badge { background: #E0A800; } .f5-ng .f5-badge { background: #EF6A2E; }
+  .f5-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-top: 12px; }
+  .f5-seg { position: relative; display: flex; height: 14px; border-radius: 5px; overflow: hidden; background: rgba(120,120,128,.14); }
+  .f5-seg i { display: block; height: 100%; }
+  .f5-seg i.t, .f5-leg i.t { background: var(--accent); }
+  .f5-seg i.p, .f5-leg i.p { background: repeating-linear-gradient(135deg, rgba(42,168,146,.55) 0 4px, rgba(42,168,146,.25) 4px 8px); }
+  .f5-leg { display: flex; gap: 14px; margin-top: 8px; font-size: 12.5px; color: var(--secondary); }
+  .f5-leg span:last-child { margin-left: auto; font-weight: 700; color: var(--ink); }
+  .f5-leg i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+  .f5-msg { margin-top: 10px; font-size: 14px; font-weight: 600; line-height: 1.55; }
+  .f5-ok .f5-msg { color: #127A6A; } .f5-mid .f5-msg { color: #8A6800; } .f5-ng .f5-msg { color: #B4461A; }
+  .f5-note { margin-top: 4px; font-size: 11.5px; color: var(--secondary); }
   .whatif { margin-top: 10px; border: 1px solid var(--separator, #e5e5ea); border-radius: 12px; overflow: hidden; font-size: 13px; }
   .whatif .wi-hd { padding: 8px 12px 4px; font-size: 12px; font-weight: 700; color: var(--secondary); }
   .whatif table { width: 100%; border-collapse: collapse; }
@@ -529,7 +544,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.33.0';
+  const APP_VERSION = '1.34.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -1244,6 +1259,42 @@
     return `<div class="card advice"><div class="adv-t ${cls}">${title}</div><div class="adv-d">${body}</div>${candHTML}</div>`;
   }
 
+  // ---------- 12月末までに年休5日（取得＋予定で判定） ----------
+  const FIVE_NEED = 5;
+  function fiveDayHTML(fy, ents, today) {
+    const end = `${fy}-12-31`;
+    let took = 0, plan = 0;
+    for (const e of ents) {
+      if (e.id > end) continue;
+      if (e.actAmt != null) took += e.actAmt;
+      else if (e.planAmt > 0) plan += e.planAmt;
+    }
+    const over = today > end;
+    const short = Math.max(0, FIVE_NEED - took - plan);
+    let lv, badge, msg;
+    if (took >= FIVE_NEED) { lv = 'ok'; badge = '達成'; msg = `12月末までに ${fmt(took)}日 取得済みです。`; }
+    else if (over) { lv = 'ng'; badge = '未達'; msg = `12月末までの取得は ${fmt(took)}日でした（${fmt(FIVE_NEED - took)}日 足りませんでした）。`; }
+    else if (!short) { lv = 'mid'; badge = '予定どおりなら達成'; msg = `取得 ${fmt(took)}日＋予定 ${fmt(plan)}日。予定どおり休めば達成です。`; }
+    else {
+      const t = parse(today < `${fy}-04-01` ? `${fy}-04-01` : today); t.setDate(t.getDate() + 1);
+      const biz = ymd(t) <= end ? bizDaysBetween(ymd(t), end) : 0;
+      lv = 'ng'; badge = `あと${fmt(short)}日`;
+      msg = `取得 ${fmt(took)}日＋予定 ${fmt(plan)}日では ${fmt(short)}日 足りません。12月末まで 残り${biz}営業日のうちに予定を入れましょう。`;
+    }
+    const seg = [];
+    for (let i = 0; i < FIVE_NEED; i++) {
+      const fill = (v) => Math.max(0, Math.min(1, v - i));
+      const a = fill(took), p = Math.max(0, fill(took + plan) - a);
+      seg.push(`<span class="f5-seg"><i class="t" style="width:${a * 100}%"></i><i class="p" style="width:${p * 100}%"></i></span>`);
+    }
+    return `<div class="card f5 f5-${lv}">
+      <div class="f5-top"><span class="f5-t">12月末までに年休5日</span><span class="f5-badge">${badge}</span></div>
+      <div class="f5-bar">${seg.join('')}</div>
+      <div class="f5-leg"><span><i class="t"></i>取得 ${fmt(took)}日</span><span><i class="p"></i>予定 ${fmt(plan)}日</span><span>${fmt(Math.min(FIVE_NEED, took + plan))} / ${FIVE_NEED}日</span></div>
+      <div class="f5-msg">${msg}</div>
+      <div class="f5-note">${fy}年4月〜12月の年休（半休は0.5日）を数えています。</div>
+    </div>`;
+  }
   function renderHome() {
     const el = $('#homeScroll');
     const fy = state.fy;
@@ -1254,7 +1305,7 @@
     const ents = liveEntries(fy);
     const c = calc(fy, yr, ents, today);
     // 並び：今月の祝日 → 今日、休む → いまの残り → アドバイス（候補日）
-    let html = carryDriftHTML(fy) + (fyOf(today) === fy ? monthHolidaysHTML(today) : '') + '<!--TODAY-->' + meterHTML(c) + adviceHTML(fy, yr, ents, c, today);
+    let html = carryDriftHTML(fy) + (fyOf(today) === fy ? monthHolidaysHTML(today) : '') + '<!--TODAY-->' + meterHTML(c) + fiveDayHTML(fy, ents, today);
     if (state.entries.size && bkDue()) html += `<div class="bk-card"><div class="bk-t">💾 ${bkText()}</div><div class="bk-d">データはこの端末の中だけにあります。月に1回、書き出して iCloud Drive に置いておくと安心です。</div><button class="bk-btn" id="bkNowBtn">いま書き出す（バックアップ）</button></div>`;
 
     // 今日（表示中の年度が今年度のときだけ）。祝日カードのすぐ下に差し込む
@@ -1292,9 +1343,6 @@
       html += `</div>`;
     }
 
-    // 予定の件数だけ出して、中身は「予定」タブへ
-    const nPlans = ents.filter((e) => statusOf(e, today) === 'plan').length;
-    html += `<button class="to-plan" data-tab-go="planView">📅 カレンダーとこれからの予定${nPlans ? `（${nPlans}件）` : ''}<span>›</span></button>`;
     el.innerHTML = html;
     const bb = el.querySelector('#bkNowBtn'); if (bb) bb.addEventListener('click', exportData);
     bindDrift(el);
