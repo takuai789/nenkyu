@@ -120,6 +120,9 @@
   .rk-bar i { position: absolute; left: 0; top: 2px; height: 10px; border-radius: 5px; background: #9FD9CD; }
   .rk-bar i.lv { background: repeating-linear-gradient(-45deg, #F3D777 0 3px, #FBEBB0 3px 6px); border-radius: 0 5px 5px 0; }
   .rk-bar em { position: absolute; left: 0; bottom: -1px; font-style: normal; font-size: 10px; color: var(--secondary); white-space: nowrap; }
+  .rk-v.hi { color: #D12A20; }
+  .rk-avg { position: absolute; top: -3px; width: 2px; height: 16px; margin-left: -1px; background: #E5484D; border-radius: 1px; }
+  .rk-avg-key { display: inline-block; width: 2px; height: 11px; background: #E5484D; margin-right: 5px; vertical-align: -1px; }
   .rk-v { text-align: right; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; } .rk-v small { font-size: 11px; margin-left: 1px; }
   .tab-tg { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 0.5px solid var(--sep); cursor: pointer; }
   .tab-tg:last-child { border-bottom: 0; }
@@ -544,7 +547,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.35.0';
+  const APP_VERSION = '1.36.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -1380,8 +1383,11 @@
     const asc = !!state.rankAsc;
     const rows = monthBizRows(fy);
     const val = (r) => by === 'work' ? r.work : by === 'leave' ? r.leave : r.biz;
+    const hiAvg = (r) => by === 'leave' && avg && r.leave > avg + 1e-9;
     const sorted = rows.slice().sort((p, q) => (asc ? val(p) - val(q) : val(q) - val(p)) || (p.key < q.key ? -1 : 1));
-    const max = by === 'leave' ? Math.max(...rows.map((r) => r.leave), 1) : Math.max(...rows.map((r) => r.weekday), 1);
+    const yrRec = state.years.get(String(fy));
+    const avg = yrRec && yrRec.total ? yrRec.total / 12 : 0;   // 年初の年休数 ÷ 12
+    const max = by === 'leave' ? Math.max(...rows.map((r) => r.leave), avg, 1) : Math.max(...rows.map((r) => r.weekday), 1);
     const leaveTotal = rows.reduce((s, r) => s + r.leave, 0);
     const total = rows.reduce((s, r) => s + r.biz, 0);
     let rank = 0, prev = null;
@@ -1396,16 +1402,16 @@
       return `<div class="rk-row${r.key === cur ? ' cur' : ''}${r.key < cur ? ' past' : ''}">
         <span class="rk-n${rank <= 3 ? ' top' : ''}">${rank}</span>
         <span class="rk-m">${r.m}月<small>${r.y}</small></span>
-        <span class="rk-bar">${bar}<em>${sub}</em></span>
-        <span class="rk-v">${fmt(val(r))}<small>日</small></span>
+        <span class="rk-bar">${bar}${by === 'leave' && avg ? `<b class="rk-avg" style="left:${avg / max * 100}%"></b>` : ''}<em>${sub}</em></span>
+        <span class="rk-v${hiAvg(r) ? ' hi' : ''}">${fmt(val(r))}<small>日</small></span>
       </div>`;
     }).join('');
     el.innerHTML = `
       <div class="seg rk-seg"><button data-rankby="biz" class="${by === 'biz' ? 'on' : ''}">営業日</button><button data-rankby="work" class="${by === 'work' ? 'on' : ''}">出勤日</button><button data-rankby="leave" class="${by === 'leave' ? 'on' : ''}">年休</button></div>
-      <div class="rk-head"><span>${fy}年度・${asc ? '少ない' : '多い'}順</span><button class="rk-sort" id="rankSort">${asc ? '多い順にする' : '少ない順にする'}</button></div>
+      <div class="rk-head"><span>${fy}年度・${asc ? '少ない' : '多い'}順${by === 'leave' && avg ? `　<span class="rk-avg-key"></span>平均 ${Math.round(avg * 10) / 10}日/月` : ''}</span><button class="rk-sort" id="rankSort">${asc ? '多い順にする' : '少ない順にする'}</button></div>
       <div class="list rk">${items}</div>
       <div class="note">${by === 'leave'
-        ? `年休＝その月に取った年休＋入れてある予定（半休は0.5日）。塗りが取得、しま模様が予定。年度の合計 <b>${fmt(leaveTotal)}</b> 日。`
+        ? `年休＝その月に取った年休＋入れてある予定（半休は0.5日）。塗りが取得、しま模様が予定。年度の合計 <b>${fmt(leaveTotal)}</b> 日。${avg ? `<br><span class="rk-avg-key"></span>赤い線＝月の平均ペース（年初の年休 ${fmt(yrRec.total)}日 ÷ 12 ＝ 約${Math.round(avg * 10) / 10}日）。線より右まで伸びていれば平均より多い月です。` : ''}`
         : `営業日＝土日・祝日・会社の休みを除いた日。年度の合計 <b>${total}</b> 営業日。${by === 'work' ? '出勤日は、営業日から取った年休・入れてある予定を引いた日数です（半休は0.5日）。' : '数字の横は、その月に平日と重なった祝日・会社の休み・年休の日数です。'}`}</div>`;
     el.querySelectorAll('[data-rankby]').forEach((b) => b.addEventListener('click', () => { state.rankBy = b.dataset.rankby; renderRank(); }));
     el.querySelector('#rankSort').addEventListener('click', () => { state.rankAsc = !state.rankAsc; renderRank(); });
