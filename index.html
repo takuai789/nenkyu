@@ -215,12 +215,14 @@
   .kr { margin-top: 14px; padding-top: 12px; border-top: 0.5px solid var(--sep); }
   .kr-hd { font-size: 13px; color: var(--secondary); margin-bottom: 4px; }
   .kr-hd span { font-size: 12px; }
-  .kr-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 5px 0; }
-  .kr-l { font-size: 14px; font-weight: 600; }
-  .kr-v { font-size: 14px; color: var(--secondary); white-space: nowrap; }
-  .kr-v b { font-size: 20px; color: var(--ink); font-variant-numeric: tabular-nums; }
-  .kr-v em { font-style: normal; font-size: 12px; font-weight: 700; color: var(--accent); margin-left: 6px; }
-  .kr-v.none { font-size: 13px; }
+  .kr table { width: 100%; border-collapse: collapse; }
+  .kr th { font-size: 11px; font-weight: 600; color: var(--secondary); text-align: right; padding: 0 0 2px; }
+  .kr td { padding: 6px 0; text-align: right; white-space: nowrap; font-size: 13px; color: var(--secondary); }
+  .kr td:first-child { text-align: left; font-size: 14px; font-weight: 600; color: var(--ink); }
+  .kr td b { font-size: 18px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .kr td .w { font-size: 12px; }
+  .kr td em { display: block; font-style: normal; font-size: 11.5px; font-weight: 700; color: var(--accent); margin-top: -2px; }
+  .kr td.none { font-size: 12.5px; }
   .kr-note { font-size: 11.5px; color: var(--secondary); line-height: 1.5; margin-top: 4px; }
   .whatif { margin-top: 10px; border: 1px solid var(--separator, #e5e5ea); border-radius: 12px; overflow: hidden; font-size: 13px; }
   .whatif .wi-hd { padding: 8px 12px 4px; font-size: 12px; font-weight: 700; color: var(--secondary); }
@@ -519,7 +521,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.31.0';
+  const APP_VERSION = '1.32.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -924,7 +926,7 @@
         ${rateHTML(c)}
         <div class="counts"><span>取得<b>${fmt(c.used)}</b></span><span>予定<b>${fmt(c.pending)}</b></span><span>まだ使える<b>${fmt(Math.max(0, c.free))}</b></span><span>年度末に残る<b>${fmt(c.projected)}</b>${lostOf(c) >= 0.5 ? `<em class="lost">うち${fmt(lostOf(c))}日消える</em>` : ''}</span></div>
         ${paceHTML(c)}
-        ${keepRatioHTML(c)}
+        ${nextOffHTML(c)}
       </div>`;
   }
 
@@ -1004,36 +1006,35 @@
     const every = c.free > 0 && biz > 0 ? biz / c.free : null;
     return { biz, every };
   }
-  // いまの「残り日数 ÷ 残り営業日」を保ったまま、次に全休・半休を入れられる最初の日
-  // 予定の休みはその日に減るものとして差し引き、休んだあと（その日より後の営業日に対して）率を下回らないかを、その日と以降の予定の日すべてで確かめる
-  function keepRatioNext(c, today = todayStr()) {
+  // 年度末に keep 日を残す（目標 or 0＝使い切り）前提で、使える日数を残りの営業日に均等に割ったペースを守りながら、
+  // 次に全休・半休を入れられる最初の日。予定の休みはその日に減るものとして差し引き、
+  // 休んだあとも「使える日数 ÷ その後の営業日」がきょうのペースを下回らないかを、その日と以降の予定の日すべてで確かめる
+  function nextOffDays(c, keep, today = todayStr()) {
     if (fyOf(today) !== c.fy) return null;
-    const p = pace(c, today);
-    if (!p || p.biz <= 0) return null;
     const end = `${c.fy + 1}-03-31`;
     let start = today;
     const te = state.entries.get(today);
     if (te && !te.deleted && te.actAmt != null) { const d = parse(today); d.setDate(d.getDate() + 1); start = ymd(d); }
     const days = [];
     for (const d = parse(start); ymd(d) <= end; d.setDate(d.getDate() + 1)) { const s = ymd(d); if (isBizDay(s)) days.push(s); }
-    if (!days.length) return null;
-    const ents = liveEntries(c.fy);
+    const n = days.length;
+    if (!n) return null;
     let past = 0;
-    const plan = new Array(days.length).fill(0);
+    const plan = new Array(n).fill(0);
     const busy = new Set();
-    for (const e of ents) {
+    for (const e of liveEntries(c.fy)) {
       busy.add(e.id);
       if (e.actAmt != null || !(e.planAmt > 0)) continue;
       if (e.id < start) { past += e.planAmt; continue; }
       const i = days.findIndex((s) => s >= e.id);
       if (i >= 0) plan[i] += e.planAmt;
     }
-    const R = c.remain - past, B = days.length;
-    if (R <= 0) return { R, B, full: null, half: null };
-    const r = R / B, n = B;
+    const A = c.remain - past - keep;          // 年度末までに使える日数（予定も含む）
+    if (A < 0.5) return { full: null, half: null };
+    const r = A / n;
     const slack = new Array(n); let cum = 0;
-    for (let i = 0; i < n; i++) { cum += plan[i]; slack[i] = R - cum - r * (n - i - 1); }
-    const sufPlan = new Array(n + 1).fill(Infinity);   // i以降の「予定の日」での余裕の最小
+    for (let i = 0; i < n; i++) { cum += plan[i]; slack[i] = A - cum - r * (n - i - 1); }
+    const sufPlan = new Array(n + 1).fill(Infinity);
     for (let i = n - 1; i >= 0; i--) sufPlan[i] = Math.min(sufPlan[i + 1], plan[i] > 0 ? slack[i] : Infinity);
     const find = (amt) => {
       for (let i = 0; i < n; i++) {
@@ -1042,21 +1043,25 @@
       }
       return null;
     };
-    return { R, B, full: find(1), half: find(0.5) };
+    return { full: find(1), half: find(0.5) };
   }
-  function keepRatioHTML(c) {
-    const k = keepRatioNext(c);
-    if (!k) return '';
+  function nextOffHTML(c) {
+    const cols = [];
+    if (c.target > 0) cols.push(['目標を残す', nextOffDays(c, c.target)]);
+    cols.push(['使い切る', nextOffDays(c, 0)]);
+    if (cols.every(([, k]) => !k)) return '';
     const today = todayStr();
-    const row = (label, s) => {
-      if (!s) return `<div class="kr-row"><span class="kr-l">${label}</span><span class="kr-v none">年度内はなし</span></div>`;
+    const cell = (s) => {
+      if (!s) return '<td class="none">年度内なし</td>';
       const dd = Math.round((parse(s) - parse(today)) / 86400000);
-      return `<div class="kr-row"><span class="kr-l">${label}</span><span class="kr-v"><b>${md(s)}</b>（${wd(s)}）<em>${dd === 0 ? 'きょう' : dd === 1 ? 'あした' : `あと${dd}日`}</em></span></div>`;
+      return `<td><b>${md(s)}</b><span class="w">（${wd(s)}）</span><em>${dd === 0 ? 'きょう' : dd === 1 ? 'あした' : `あと${dd}日`}</em></td>`;
     };
+    const head = cols.length > 1 ? `<tr><th></th>${cols.map(([l]) => `<th>${l}</th>`).join('')}</tr>` : '';
+    const rows = [['全休', 'full'], ['半休', 'half']].map(([l, k]) => `<tr><td>${l}</td>${cols.map(([, x]) => cell(x && x[k])).join('')}</tr>`).join('');
     return `<div class="kr">
-      <div class="kr-hd">いまの残り率を保つなら <span>（${fmt(k.R)}日 ÷ 残り${k.B}営業日）</span></div>
-      ${row('次に休める日', k.full)}${row('次に半休できる日', k.half)}
-      <div class="kr-note">入れてある予定の休みも差し引いて、休んだあとも「残り日数 ÷ 残り営業日」がきょうの率を下回らない最初の営業日です。</div>
+      <div class="kr-hd">ペースを守るなら、次に休める日${cols.length > 1 ? '' : '（ちょうど使い切る前提）'}</div>
+      <table>${head}${rows}</table>
+      <div class="kr-note">年度末までに使える日数（${c.target > 0 ? '目標を残す／使い切る' : '使い切る'}）を残りの営業日に均等に割ったペースで、予定の休みも差し引いたうえで、そのペースを崩さずに休める最初の営業日です。</div>
     </div>`;
   }
   function paceHTML(c) {
