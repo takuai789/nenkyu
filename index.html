@@ -215,6 +215,14 @@
   .kr { margin-top: 14px; padding-top: 12px; border-top: 0.5px solid var(--sep); }
   .kr-hd { font-size: 13px; color: var(--secondary); margin-bottom: 4px; }
   .kr-hd span { font-size: 12px; }
+  .sk-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 4px 0; font-size: 13px; }
+  .sk-l { font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .sk-v { color: var(--secondary); text-align: right; }
+  .sk-v b { font-size: 16px; color: var(--ink); font-variant-numeric: tabular-nums; margin: 0 1px; }
+  .sk-cur .sk-v b { font-size: 22px; }
+  .sk-v b.short { color: #127A6A; } .sk-v b.mid { color: var(--ink); } .sk-v b.long { color: #B4461A; }
+  .sk-k { font-size: 10.5px; font-weight: 700; color: var(--secondary); background: var(--fill, rgba(120,120,128,.12)); border-radius: 5px; padding: 1px 5px; margin-left: 3px; }
+  .sk-warn { font-size: 11px; font-weight: 800; color: #fff; background: #EF6A2E; border-radius: 999px; padding: 2px 8px; margin-left: 6px; }
   .kr table { width: 100%; border-collapse: collapse; }
   .kr th { font-size: 11px; font-weight: 600; color: var(--secondary); text-align: right; padding: 0 0 2px; }
   .kr td { padding: 6px 0; text-align: right; white-space: nowrap; font-size: 13px; color: var(--secondary); }
@@ -521,7 +529,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.32.0';
+  const APP_VERSION = '1.33.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -927,6 +935,7 @@
         <div class="counts"><span>取得<b>${fmt(c.used)}</b></span><span>予定<b>${fmt(c.pending)}</b></span><span>まだ使える<b>${fmt(Math.max(0, c.free))}</b></span><span>年度末に残る<b>${fmt(c.projected)}</b>${lostOf(c) >= 0.5 ? `<em class="lost">うち${fmt(lostOf(c))}日消える</em>` : ''}</span></div>
         ${paceHTML(c)}
         ${nextOffHTML(c)}
+        ${streakHTML(c)}
       </div>`;
   }
 
@@ -1044,6 +1053,74 @@
       return null;
     };
     return { full: find(1), half: find(0.5) };
+  }
+  // ---------- 休まず働く日数（平日に休めた日＝年休・半休・祝日・会社の休み から数える） ----------
+  function leaveAmtOn(s) {
+    const e = state.entries.get(s);
+    if (!e || e.deleted) return 0;
+    return e.actAmt != null ? e.actAmt : (e.planAmt || 0);
+  }
+  function restKind(s) {
+    const w = parse(s).getDay();
+    if (w === 0 || w === 6) return null;
+    const amt = leaveAmtOn(s);
+    if (amt >= 1) return '年休';
+    if (amt > 0) return '半休';
+    if (isHoliday(s)) return '祝日';
+    const o = companyOff(s);
+    if (o) return o.name || '会社の休み';
+    return null;
+  }
+  function streakInfo(c, today = todayStr()) {
+    if (fyOf(today) !== c.fy) return null;
+    const end = `${c.fy + 1}-03-31`;
+    // きょうが休みならきょうを「最後に休んだ日」とする
+    let last = null, since = 0;
+    for (let d = parse(today), k = 0; k < 400; k++, d.setDate(d.getDate() - 1)) {
+      const s = ymd(d);
+      if (restKind(s)) { last = s; break; }
+      if (isBizDay(s)) since++;
+    }
+    let next = null, until = 0;
+    for (let d = parse(today), k = 0; k < 400; k++) {
+      d.setDate(d.getDate() + 1);
+      const s = ymd(d);
+      if (restKind(s)) { next = s; break; }
+      if (isBizDay(s)) until++;
+    }
+    // これから年度末までで、いちばん長く休みが空く区間
+    let best = null, runStart = null, run = 0;
+    const flush = (endS, open) => { if (run > 0 && (!best || run > best.n)) best = { n: run, from: runStart, to: endS, open }; run = 0; runStart = null; };
+    let prevBiz = null;
+    for (let d = parse(today); ymd(d) <= end; d.setDate(d.getDate() + 1)) {
+      const s = ymd(d);
+      if (restKind(s)) { flush(prevBiz, false); continue; }
+      if (isBizDay(s)) { if (!run) runStart = s; run++; prevBiz = s; }
+    }
+    flush(prevBiz, true);
+    const todayRest = !!restKind(today);
+    const cur = todayRest ? 0 : since + until;
+    return { last, since, next, until, cur, best, todayRest };
+  }
+  function streakHTML(c) {
+    const k = streakInfo(c);
+    if (!k) return '';
+    const day = (s) => s ? `${md(s)}（${wd(s)}）<span class="sk-k">${restKind(s)}</span>` : '—';
+    const lvl = (n) => n >= 20 ? 'long' : n >= 10 ? 'mid' : 'short';
+    const curTxt = k.todayRest
+      ? '<b>きょうはお休み</b>'
+      : `<b class="${lvl(k.cur)}">${k.cur}</b>営業日${k.cur >= 20 ? '<span class="sk-warn">長め</span>' : ''}`;
+    const best = k.best && k.best.n >= 2
+      ? `<div class="sk-row"><span class="sk-l">これからの最長</span><span class="sk-v">${md(k.best.from)}〜${k.best.open ? '年度末' : md(k.best.to)}　<b class="${lvl(k.best.n)}">${k.best.n}</b>営業日</span></div>`
+      : '';
+    return `<div class="kr sk">
+      <div class="kr-hd">休まず働く日数</div>
+      <div class="sk-row"><span class="sk-l">最後に休んだ日</span><span class="sk-v">${day(k.last)}${k.last && !k.todayRest ? `　から <b>${k.since}</b>営業日` : ''}</span></div>
+      <div class="sk-row"><span class="sk-l">次の休み</span><span class="sk-v">${k.next ? `${day(k.next)}　まで あと <b>${k.until}</b>営業日` : '年度内の予定なし'}</span></div>
+      <div class="sk-row sk-cur"><span class="sk-l">いまの連続勤務</span><span class="sk-v">${curTxt}</span></div>
+      ${best}
+      <div class="kr-note">平日に休めた日（年休・半休・祝日・会社の休み）で区切って、その間の営業日を数えています。予定の休みは取るものとして数えます。いちばん長い区間に予定を置くと、休みの偏りが減ります。</div>
+    </div>`;
   }
   function nextOffHTML(c) {
     const cols = [];
