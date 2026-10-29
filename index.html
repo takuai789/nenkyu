@@ -237,6 +237,8 @@
   .kr-note { font-size: 11.5px; color: var(--secondary); line-height: 1.5; margin-top: 4px; }
   .kr .sv-row td { padding-bottom: 10px; }
   .kr td.sv b { font-size: 22px; }
+  .kr .pair-row td { border-top: 0.5px dashed var(--sep); padding-top: 8px; }
+  .kr td .to { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink); margin-top: -1px; }
   .kr td.sv small { font-size: 12px; margin-left: 1px; }
   .kr td.sv.plus b, .kr td.sv.plus em { color: #1F9D55; }
   .kr td.sv.minus b, .kr td.sv.minus em { color: var(--red); }
@@ -553,7 +555,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.37.0';
+  const APP_VERSION = '1.38.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -1081,9 +1083,17 @@
       }
       return null;
     };
+    // 2連休：続けて2営業日（週末をまたいでもよい）。1日目も2日目も、それ以降の予定の日も貯金がマイナスにならない最初の組
+    const findPair = () => {
+      for (let i = 0; i + 1 < N; i++) {
+        if (days[i] < start || busy.has(days[i]) || busy.has(days[i + 1])) continue;
+        if (bal[i] >= 1 - 1e-9 && bal[i + 1] >= 2 - 1e-9 && suf[i + 2] >= 2 - 1e-9) return [days[i], days[i + 1]];
+      }
+      return null;
+    };
     // 予定のために取っておいている（いま貯金はあるのに休めない）か
     const held = now >= 1 - 1e-9 && suf[ti + 1] < 1;
-    return { now, perDay: r, full: find(1), half: find(0.5), held, U };
+    return { now, perDay: r, full: find(1), half: find(0.5), pair: findPair(), held, U };
   }
   // ---------- 休まず働く日数（平日に休めた日＝年休・半休・祝日・会社の休み から数える） ----------
   function leaveAmtOn(s) {
@@ -1171,9 +1181,17 @@
       const dd = Math.round((parse(s) - parse(today)) / 86400000);
       return `<td><b>${md(s)}</b><span class="w">（${wd(s)}）</span><em>${dd === 0 ? 'きょう' : dd === 1 ? 'あした' : `あと${dd}日`}</em></td>`;
     };
+    const pairCell = (p) => {
+      if (!p) return '<td class="none">年度内なし</td>';
+      const [s1, s2] = p;
+      const dd = Math.round((parse(s1) - parse(today)) / 86400000);
+      const second = s1.slice(0, 7) === s2.slice(0, 7) ? `${+s2.slice(8)}` : md(s2);
+      return `<td><b>${md(s1)}</b><span class="w">（${wd(s1)}）</span><span class="to">〜${second}（${wd(s2)}）</span><em>${dd === 0 ? 'きょうから' : dd === 1 ? 'あしたから' : `あと${dd}日`}</em></td>`;
+    };
     const head = two ? `<tr><th></th>${cols.map(([l]) => `<th>${l}</th>`).join('')}</tr>` : '';
     const rows = `<tr class="sv-row"><td>いまの貯金</td>${cols.map(([, x]) => balCell(x)).join('')}</tr>`
-      + [['全休', 'full'], ['半休', 'half']].map(([l, k]) => `<tr><td>次に${l}</td>${cols.map(([, x]) => cell(x && x[k])).join('')}</tr>`).join('');
+      + [['全休', 'full'], ['半休', 'half']].map(([l, k]) => `<tr><td>次に${l}</td>${cols.map(([, x]) => cell(x && x[k])).join('')}</tr>`).join('')
+      + `<tr class="pair-row"><td>次に2連休</td>${cols.map(([, x]) => pairCell(x && x.pair)).join('')}</tr>`;
     const base = cols[0][1];
     const held = cols.some(([, x]) => x && x.held);
     const per = base && base.perDay > 0 ? Math.round(1 / base.perDay * 10) / 10 : 0;
@@ -1181,7 +1199,7 @@
       <div class="kr-hd">休みの貯金${two ? '' : '（ちょうど使い切る前提）'}</div>
       <table>${head}${rows}</table>
       ${held ? '<div class="kr-held">貯金はあるけれど、このあと入れてある予定の休みのぶんを取っておくため、次に休める日が先になっています。</div>' : ''}
-      <div class="kr-note">4/1から、年度末までに使える日数（${two ? `年休−目標の${fmt(c.target)}日／年休すべて` : '年休すべて'}）を営業日ごとに少しずつためていく考え方です${per ? `（${two ? '目標を残すなら' : ''}約${per}営業日働くと1日たまる）` : ''}。基準は年度の初めから固定で、毎日は変わりません。休むと減り、働くとたまります。次に休める日は、そこで休んでも、このあとの予定の日まで貯金がマイナスにならない最初の営業日です。</div>
+      <div class="kr-note">4/1から、年度末までに使える日数（${two ? `年休−目標の${fmt(c.target)}日／年休すべて` : '年休すべて'}）を営業日ごとに少しずつためていく考え方です${per ? `（${two ? '目標を残すなら' : ''}約${per}営業日働くと1日たまる）` : ''}。基準は年度の初めから固定で、毎日は変わりません。休むと減り、働くとたまります。次に休める日は、そこで休んでも、このあとの予定の日まで貯金がマイナスにならない最初の営業日です。2連休は続けて2営業日（金と月のように週末をまたぐ組も含む）で、2日目に2日分の貯金がある最初の組です。</div>
     </div>`;
   }
   function paceHTML(c) {
