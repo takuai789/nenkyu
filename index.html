@@ -235,6 +235,12 @@
   .kr td em { display: block; font-style: normal; font-size: 11.5px; font-weight: 700; color: var(--accent); margin-top: -2px; }
   .kr td.none { font-size: 12.5px; }
   .kr-note { font-size: 11.5px; color: var(--secondary); line-height: 1.5; margin-top: 4px; }
+  .kr .sv-row td { padding-bottom: 10px; }
+  .kr td.sv b { font-size: 22px; }
+  .kr td.sv small { font-size: 12px; margin-left: 1px; }
+  .kr td.sv.plus b, .kr td.sv.plus em { color: #1F9D55; }
+  .kr td.sv.minus b, .kr td.sv.minus em { color: var(--red); }
+  .kr-held { font-size: 12px; color: #B25E00; background: rgba(255,149,0,.1); border-radius: 8px; padding: 7px 10px; margin-top: 6px; line-height: 1.5; }
   .f5-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .f5-t { font-size: 15px; font-weight: 700; }
   .f5-badge { font-size: 13px; font-weight: 800; color: #fff; border-radius: 999px; padding: 4px 11px; white-space: nowrap; }
@@ -547,7 +553,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.36.0';
+  const APP_VERSION = '1.37.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -1033,44 +1039,51 @@
     const every = c.free > 0 && biz > 0 ? biz / c.free : null;
     return { biz, every };
   }
-  // 年度末に keep 日を残す（目標 or 0＝使い切り）前提で、使える日数を残りの営業日に均等に割ったペースを守りながら、
-  // 次に全休・半休を入れられる最初の日。予定の休みはその日に減るものとして差し引き、
-  // 休んだあとも「使える日数 ÷ その後の営業日」がきょうのペースを下回らないかを、その日と以降の予定の日すべてで確かめる
-  function nextOffDays(c, keep, today = todayStr()) {
-    if (fyOf(today) !== c.fy) return null;
-    const end = `${c.fy + 1}-03-31`;
+  // ---------- 休みの貯金 ----------
+  // 4/1 から「年度末までに使える日数（年休 − keep）」を営業日ごとに一定のペースでためていく。この基準線は毎日変わらない。
+  // 貯金＝ためた分 − 使った分（取得＋きょうまでの予定）。次に休める日＝その日に休んでも、
+  // それ以降の予定の日まで貯金がマイナスにならない最初の営業日。
+  function savings(c, keep, today = todayStr()) {
+    const fs = `${c.fy}-04-01`, end = `${c.fy + 1}-03-31`;
+    if (today < fs || today > end) return null;
+    const days = [];
+    for (const d = parse(fs); ymd(d) <= end; d.setDate(d.getDate() + 1)) { const s = ymd(d); if (isBizDay(s)) days.push(s); }
+    const N = days.length;
+    if (!N) return null;
+    const U = c.total - keep;
+    const r = Math.max(0, U) / N;
+    const cons = new Array(N).fill(0), isPlan = new Array(N).fill(false);
+    const busy = new Set();
+    for (const e of liveEntries(c.fy)) {
+      const amt = e.actAmt != null ? e.actAmt : (e.planAmt > 0 ? e.planAmt : 0);
+      if (amt > 0 || e.actAmt != null) busy.add(e.id);
+      if (!(amt > 0)) continue;
+      let idx = days.findIndex((s) => s >= e.id);
+      if (idx < 0) idx = N - 1;
+      cons[idx] += amt;
+      if (e.actAmt == null && e.id > today) isPlan[idx] = true;
+    }
+    const bal = new Array(N); let cum = 0;
+    for (let i = 0; i < N; i++) { cum += cons[i]; bal[i] = r * (i + 1) - cum; }
+    // きょうの貯金（きょうが休日なら直前の営業日まで）
+    let ti = -1; for (let i = 0; i < N && days[i] <= today; i++) ti = i;
+    const now = ti < 0 ? 0 : bal[ti];
+    // 次に休める日
     let start = today;
     const te = state.entries.get(today);
     if (te && !te.deleted && te.actAmt != null) { const d = parse(today); d.setDate(d.getDate() + 1); start = ymd(d); }
-    const days = [];
-    for (const d = parse(start); ymd(d) <= end; d.setDate(d.getDate() + 1)) { const s = ymd(d); if (isBizDay(s)) days.push(s); }
-    const n = days.length;
-    if (!n) return null;
-    let past = 0;
-    const plan = new Array(n).fill(0);
-    const busy = new Set();
-    for (const e of liveEntries(c.fy)) {
-      busy.add(e.id);
-      if (e.actAmt != null || !(e.planAmt > 0)) continue;
-      if (e.id < start) { past += e.planAmt; continue; }
-      const i = days.findIndex((s) => s >= e.id);
-      if (i >= 0) plan[i] += e.planAmt;
-    }
-    const A = c.remain - past - keep;          // 年度末までに使える日数（予定も含む）
-    if (A < 0.5) return { full: null, half: null };
-    const r = A / n;
-    const slack = new Array(n); let cum = 0;
-    for (let i = 0; i < n; i++) { cum += plan[i]; slack[i] = A - cum - r * (n - i - 1); }
-    const sufPlan = new Array(n + 1).fill(Infinity);
-    for (let i = n - 1; i >= 0; i--) sufPlan[i] = Math.min(sufPlan[i + 1], plan[i] > 0 ? slack[i] : Infinity);
+    const suf = new Array(N + 1).fill(Infinity);
+    for (let i = N - 1; i >= 0; i--) suf[i] = Math.min(suf[i + 1], isPlan[i] ? bal[i] : Infinity);
     const find = (amt) => {
-      for (let i = 0; i < n; i++) {
-        if (busy.has(days[i])) continue;
-        if (Math.min(slack[i], sufPlan[i + 1]) >= amt - 1e-9) return days[i];
+      for (let i = 0; i < N; i++) {
+        if (days[i] < start || busy.has(days[i])) continue;
+        if (Math.min(bal[i], suf[i + 1]) >= amt - 1e-9) return days[i];
       }
       return null;
     };
-    return { full: find(1), half: find(0.5) };
+    // 予定のために取っておいている（いま貯金はあるのに休めない）か
+    const held = now >= 1 - 1e-9 && suf[ti + 1] < 1;
+    return { now, perDay: r, full: find(1), half: find(0.5), held, U };
   }
   // ---------- 休まず働く日数（平日に休めた日＝年休・半休・祝日・会社の休み から数える） ----------
   function leaveAmtOn(s) {
@@ -1142,21 +1155,33 @@
   }
   function nextOffHTML(c) {
     const cols = [];
-    if (c.target > 0) cols.push(['目標を残す', nextOffDays(c, c.target)]);
-    cols.push(['使い切る', nextOffDays(c, 0)]);
+    if (c.target > 0) cols.push(['目標を残す', savings(c, c.target)]);
+    cols.push(['使い切る', savings(c, 0)]);
     if (cols.every(([, k]) => !k)) return '';
     const today = todayStr();
+    const two = cols.length > 1;
+    const balCell = (x) => {
+      if (!x) return '<td>—</td>';
+      const v = Math.round(x.now * 10) / 10;
+      const cls = v >= 0 ? 'plus' : 'minus';
+      return `<td class="sv ${cls}"><b>${v > 0 ? '+' : v < 0 ? '−' : '±'}${fmt(Math.abs(v))}</b><small>日</small><em>${v >= 0 ? '貯金' : '前借り'}</em></td>`;
+    };
     const cell = (s) => {
       if (!s) return '<td class="none">年度内なし</td>';
       const dd = Math.round((parse(s) - parse(today)) / 86400000);
       return `<td><b>${md(s)}</b><span class="w">（${wd(s)}）</span><em>${dd === 0 ? 'きょう' : dd === 1 ? 'あした' : `あと${dd}日`}</em></td>`;
     };
-    const head = cols.length > 1 ? `<tr><th></th>${cols.map(([l]) => `<th>${l}</th>`).join('')}</tr>` : '';
-    const rows = [['全休', 'full'], ['半休', 'half']].map(([l, k]) => `<tr><td>${l}</td>${cols.map(([, x]) => cell(x && x[k])).join('')}</tr>`).join('');
+    const head = two ? `<tr><th></th>${cols.map(([l]) => `<th>${l}</th>`).join('')}</tr>` : '';
+    const rows = `<tr class="sv-row"><td>いまの貯金</td>${cols.map(([, x]) => balCell(x)).join('')}</tr>`
+      + [['全休', 'full'], ['半休', 'half']].map(([l, k]) => `<tr><td>次に${l}</td>${cols.map(([, x]) => cell(x && x[k])).join('')}</tr>`).join('');
+    const base = cols[0][1];
+    const held = cols.some(([, x]) => x && x.held);
+    const per = base && base.perDay > 0 ? Math.round(1 / base.perDay * 10) / 10 : 0;
     return `<div class="kr">
-      <div class="kr-hd">ペースを守るなら、次に休める日${cols.length > 1 ? '' : '（ちょうど使い切る前提）'}</div>
+      <div class="kr-hd">休みの貯金${two ? '' : '（ちょうど使い切る前提）'}</div>
       <table>${head}${rows}</table>
-      <div class="kr-note">年度末までに使える日数（${c.target > 0 ? '目標を残す／使い切る' : '使い切る'}）を残りの営業日に均等に割ったペースで、予定の休みも差し引いたうえで、そのペースを崩さずに休める最初の営業日です。</div>
+      ${held ? '<div class="kr-held">貯金はあるけれど、このあと入れてある予定の休みのぶんを取っておくため、次に休める日が先になっています。</div>' : ''}
+      <div class="kr-note">4/1から、年度末までに使える日数（${two ? `年休−目標の${fmt(c.target)}日／年休すべて` : '年休すべて'}）を営業日ごとに少しずつためていく考え方です${per ? `（${two ? '目標を残すなら' : ''}約${per}営業日働くと1日たまる）` : ''}。基準は年度の初めから固定で、毎日は変わりません。休むと減り、働くとたまります。次に休める日は、そこで休んでも、このあとの予定の日まで貯金がマイナスにならない最初の営業日です。</div>
     </div>`;
   }
   function paceHTML(c) {
