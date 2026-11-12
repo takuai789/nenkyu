@@ -162,6 +162,9 @@
   .cd.d-co { background: #E6E9FB; } .cd.d-co .n { color: #3F4DB8; }
   .cd.plan { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); } .cd.plan .n, .cd.plan .mk { color: #127A6A; }
   .cd.took { background: var(--accent); } .cd.took .n, .cd.took .mk { color: #fff; }
+  .cd.nr:not(.took):not(.plan) { background: repeating-linear-gradient(135deg, #ECEBEF 0 4px, #F7F6F9 4px 8px); }
+  .cd.nr:not(.took):not(.plan) .mk { color: #C2410C; }
+  .cd.nr::after { content: ''; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: #EA580C; }
   .cd.past:not(.took):not(.plan) { opacity: .45; }
   .cd.today { box-shadow: inset 0 0 0 2px var(--ink); }
   .cd.today.plan { box-shadow: inset 0 0 0 2px var(--ink); }
@@ -169,6 +172,11 @@
   .cal-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 10px; font-size: 11px; color: var(--secondary); }
   .cal-legend .lg { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
   .lg-took { background: var(--accent); } .lg-plan { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .lg-nr { background: repeating-linear-gradient(135deg, #DCDBE0 0 2px, #F7F6F9 2px 4px); box-shadow: inset 0 0 0 1px #EA580C; }
+  .nr-hint { color: #C2410C !important; font-weight: 600; }
+  .nr-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .nr-chip { border: 0; background: #FFF1E7; color: #9A3412; font: inherit; font-size: 13px; font-weight: 600; padding: 6px 11px; border-radius: 999px; cursor: pointer; }
+  .nr-chip small { font-weight: 500; color: #C2410C; margin-left: 4px; }
   .lg-hol { background: #FDE7E5; box-shadow: inset 0 0 0 1px #F3B3AE; } .lg-co { background: #E6E9FB; box-shadow: inset 0 0 0 1px #B9C0F0; }
   .cal-hint { font-size: 11px; color: var(--tertiary); margin-top: 4px; }
   .section-label { font-size: 13px; color: var(--secondary); margin: 6px 4px 8px; font-weight: 500; }
@@ -556,7 +564,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.39.0';
+  const APP_VERSION = '1.40.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -649,6 +657,7 @@
       let mark = '';
       if (live && live.actAmt > 0) { cls.push('took'); mark = live.actAmt === 0.5 ? '半' : '休'; }
       else if (live && live.actAmt == null && live.planAmt > 0) { cls.push('plan'); mark = live.planAmt === 0.5 ? '半' : '予'; }
+      if (noRestOf(s) != null) { cls.push('nr'); if (!mark) mark = '✕'; }
       if (s === today) cls.push('today');
       if (s < today) cls.push('past');
       cells += `<button class="${cls.join(' ')}" data-entry="${s}"><span class="n">${d}</span>${mark ? `<span class="mk">${mark}</span>` : ''}</button>`;
@@ -657,7 +666,7 @@
     return `<div class="card cal">
       <div class="cal-head"><button class="cal-nav" data-calnav="-1" ${prevOk ? '' : 'disabled'} aria-label="前の月">‹</button><span class="cal-t">${y}年${m}月</span><button class="cal-nav" data-calnav="1" ${nextOk ? '' : 'disabled'} aria-label="次の月">›</button></div>
       <div class="cal-grid">${WD.map((x, i) => `<span class="cw${i === 0 || i === 6 ? ' we' : ''}">${x}</span>`).join('')}${cells}</div>
-      <div class="cal-legend"><span><i class="lg lg-took"></i>取った</span><span><i class="lg lg-plan"></i>予定</span><span><i class="lg lg-hol"></i>祝日</span><span><i class="lg lg-co"></i>会社の休み</span></div>
+      <div class="cal-legend"><span><i class="lg lg-took"></i>取った</span><span><i class="lg lg-plan"></i>予定</span><span><i class="lg lg-hol"></i>祝日</span><span><i class="lg lg-co"></i>会社の休み</span><span><i class="lg lg-nr"></i>休めない日</span></div>
       <div class="cal-hint">日付を押すと、その日の予定・実績を入れられます</div>
     </div>`;
   }
@@ -823,6 +832,16 @@
   // 共通設定（years ストアに id:'settings' で保存。内部キーは変えない）
   const DEFAULT_GRANT = 20;
   const getGrant = () => { const st = state.years.get('settings'); return st && st.grant != null ? st.grant : DEFAULT_GRANT; };
+  // 休めない日（締め日・大事な会議など）。settings.noRest = { 'YYYY-MM-DD': 'メモ' }
+  const getNoRest = () => { const st = state.years.get('settings'); return (st && st.noRest) || {}; };
+  const noRestOf = (s) => { const m = getNoRest(); return Object.prototype.hasOwnProperty.call(m, s) ? m[s] : null; };
+  async function saveNoRest(date, note) {
+    const m = Object.assign({}, getNoRest());
+    if (note == null) delete m[date]; else m[date] = note;
+    const next = Object.assign({}, state.years.get('settings') || { id: 'settings' }, { noRest: m, updatedAt: Date.now() });
+    state.years.set('settings', next);
+    await put('years', next);
+  }
   async function saveOffs(offs) {
     const next = Object.assign({}, state.years.get('settings') || { id: 'settings' }, { offs, updatedAt: Date.now() });
     state.years.set('settings', next);
@@ -1066,6 +1085,7 @@
       cons[idx] += amt;
       if (e.actAmt == null && e.id > today) isPlan[idx] = true;
     }
+    for (const k of Object.keys(getNoRest())) busy.add(k); // 休めない日は「次に休める日」の候補にしない
     const bal = new Array(N); let cum = 0;
     for (let i = 0; i < N; i++) { cum += cons[i]; bal[i] = r * (i + 1) - cum; }
     // きょうの貯金（きょうが休日なら直前の営業日まで）
@@ -1473,6 +1493,10 @@
     if (plans.length) html += `<div class="list">` + plans.map((e) => rowHTML(e, today)).join('') + `</div>`;
     else html += `<div class="note">まだ予定はありません。カレンダーの日付か、下のボタンから入れられます。</div>`;
     html += `<button class="add-plan" id="addPlanBtn">＋ 予定を入れる</button>`;
+    const nrs = Object.keys(getNoRest()).filter((k) => k >= today && fyOf(k) === fy).sort();
+    html += `<div class="section-label" style="margin-top:18px">休めない日${nrs.length ? `（${nrs.length}日）` : ''}</div>`;
+    html += nrs.length ? `<div class="nr-list">` + nrs.map((k) => `<button class="nr-chip" data-entry="${k}">${md(k)}（${wd(k)}）${getNoRest()[k] ? `<small>${esc(getNoRest()[k])}</small>` : ''}</button>`).join('') + `</div>`
+      : `<div class="note">締め日や大事な会議など、休めない日はカレンダーの日付から付けられます。</div>`;
     el.innerHTML = html;
     renderHomeCalBind(el);
     renderRank();
@@ -1805,7 +1829,10 @@
       else hint = `${fyOf(s)}年度の予定として入れます`;
       if (s && !isBizDay(s)) hint = `${isHoliday(s) ? '祝日' : '土日'}です。営業日ではありませんが、記録はできます`;
       if (ex && !ex.deleted) hint = `この日はすでに記録があります。上書きします`;
+      const nrv = s ? noRestOf(s) : null;
+      if (nrv != null) hint = `休めない日${nrv ? '（' + nrv + '）' : ''}です。それでも入れられます`;
       $('#addHint').textContent = hint;
+      $('#addHint').classList.toggle('nr-hint', nrv != null);
       $('#addGo').textContent = s && s <= today ? '記録する' : '追加';
     };
     dateEl.addEventListener('change', upd); dateEl.addEventListener('input', upd); upd();
@@ -1831,6 +1858,7 @@
     const base = state.entries.get(id) || { id, planAmt: null, actAmt: null };
     let plan = base.deleted ? null : base.planAmt;
     let act = base.deleted ? null : base.actAmt;
+    let nr = noRestOf(id) != null, nrNote = noRestOf(id) || '';
     const segBtn = (grp, v, label, cur, dis) => `<button data-g="${grp}" data-v="${v}" class="${String(cur) === String(v) ? 'on' : ''}" ${dis ? 'disabled' : ''}>${label}</button>`;
     const draw = () => {
       openSheet(`
@@ -1839,15 +1867,23 @@
         <div class="seg">${segBtn('p', 'null', 'なし', plan)}${segBtn('p', 0.5, '半休', plan)}${segBtn('p', 1, '全休', plan)}</div>
         <div class="field-label">実績${canAct ? '' : '（当日になったら入れられます）'}</div>
         <div class="seg">${segBtn('a', 'null', 'まだ', act, !canAct)}${segBtn('a', 0, '取らず', act, !canAct || plan == null)}${segBtn('a', 0.5, '半休', act, !canAct)}${segBtn('a', 1, '全休', act, !canAct)}</div>
+        <div class="field-label">この日</div>
+        <div class="seg">${segBtn('n', 0, 'ふつう', nr ? 1 : 0)}${segBtn('n', 1, '休めない日', nr ? 1 : 0)}</div>
+        ${nr ? `<input type="text" class="date-input" id="nrNote" placeholder="メモ（例：月末締め、大事な会議）" value="${esc(nrNote)}" style="margin-bottom:14px" />` : ''}
+        ${nr && (plan > 0 || act > 0) ? '<div class="hint nr-hint">休めない日に休みが入っています</div>' : ''}
         <button class="primary" id="editGo">保存</button>
         <button class="del-btn" id="editDel">この日の記録を削除</button>`);
+      const ni = $('#nrNote'); if (ni) ni.addEventListener('input', () => { nrNote = ni.value; });
       $('#sheet').querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => {
         const v = b.dataset.v === 'null' ? null : Number(b.dataset.v);
         if (b.dataset.g === 'p') { plan = v; if (plan == null && act === 0) act = null; }
+        else if (b.dataset.g === 'n') nr = v === 1;
         else act = v;
         draw();
       }));
       $('#editGo').addEventListener('click', async () => {
+        const wasNr = noRestOf(id) != null;
+        if (nr || wasNr) await saveNoRest(id, nr ? nrNote.trim() : null);
         const prev = await saveEntry(id, { planAmt: plan, actAmt: act });
         closeSheet(); render();
         toast(plan == null && act == null ? `${md(id)} の記録を消しました` : `${md(id)} を更新しました`, async () => { await restoreEntry(id, prev); render(); });
