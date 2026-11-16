@@ -329,6 +329,12 @@
   .chip.wait { background: #FFE3E1; color: #D12A20; }
   .amt { font-size: 15px; font-weight: 700; min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
   .empty { padding: 20px; text-align: center; color: var(--secondary); font-size: 14px; }
+  /* 実績の入れ忘れ：画面のいちばん上に出す */
+  .wait-card { background: #FFF5D6; border-radius: 16px; margin-bottom: 14px; overflow: hidden; box-shadow: 0 0 0 1px rgba(224,168,0,.25); }
+  .wait-card .wh { display: flex; align-items: center; gap: 8px; padding: 12px 14px 6px; font-size: 15px; font-weight: 800; color: #8A6800; }
+  .wait-card .wh small { font-size: 12px; font-weight: 600; color: #A88A2A; margin-left: auto; }
+  .wait-card .confirm-row { border-bottom: .5px solid rgba(138,104,0,.15); }
+  .wait-card .confirm-row:last-child { border-bottom: 0; }
   .confirm-row { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 0.5px solid var(--sep); }
   .confirm-row:last-child { border-bottom: 0; }
   .confirm-row .date { flex: 1; font-size: 15px; font-weight: 600; }
@@ -564,7 +570,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.40.0';
+  const APP_VERSION = '1.41.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -1372,7 +1378,19 @@
     const ents = liveEntries(fy);
     const c = calc(fy, yr, ents, today);
     // 並び：今月の祝日 → 今日、休む → いまの残り → アドバイス（候補日）
-    let html = carryDriftHTML(fy) + (fyOf(today) === fy ? monthHolidaysHTML(today) : '') + '<!--TODAY-->' + meterHTML(c) + fiveDayHTML(fy, ents, today);
+    // 予定日を過ぎたのに実績が入っていない日（入れ忘れ）は、いちばん上で聞く
+    const waits = ents.filter((e) => statusOf(e, today) === 'wait').sort((a, b) => a.id < b.id ? -1 : 1);
+    let waitHTML = '';
+    if (waits.length) {
+      waitHTML = `<div class="wait-card"><div class="wh">📝 取ったか確認：${waits.length}件<small>予定日を過ぎています</small></div>`;
+      for (const e of waits) {
+        waitHTML += `<div class="confirm-row"><div class="date">${md(e.id)}（${wd(e.id)}） <span class="chip plan">${amtLabel(e.planAmt)}</span></div>
+          <button class="mini no" data-skip="${e.id}">取らず</button>
+          <button class="mini go" data-take="${e.id}">取った</button></div>`;
+      }
+      waitHTML += `</div>`;
+    }
+    let html = waitHTML + carryDriftHTML(fy) + (fyOf(today) === fy ? monthHolidaysHTML(today) : '') + '<!--TODAY-->' + meterHTML(c) + fiveDayHTML(fy, ents, today);
     if (state.entries.size && bkDue()) html += `<div class="bk-card"><div class="bk-t">💾 ${bkText()}</div><div class="bk-d">データはこの端末の中だけにあります。月に1回、書き出して iCloud Drive に置いておくと安心です。</div><button class="bk-btn" id="bkNowBtn">いま書き出す（バックアップ）</button></div>`;
 
     // 今日（表示中の年度が今年度のときだけ）。祝日カードのすぐ下に差し込む
@@ -1398,17 +1416,6 @@
 
     html = html.replace('<!--TODAY-->', todayHTML);
 
-    // 未確定（予定日を過ぎたもの）
-    const waits = ents.filter((e) => statusOf(e, today) === 'wait');
-    if (waits.length) {
-      html += `<div class="section-label">予定日を過ぎた予定 — 取った？</div><div class="list">`;
-      for (const e of waits) {
-        html += `<div class="confirm-row"><div class="date">${md(e.id)}（${wd(e.id)}） <span class="chip plan">${amtLabel(e.planAmt)}</span></div>
-          <button class="mini no" data-skip="${e.id}">取らず</button>
-          <button class="mini go" data-take="${e.id}">取った</button></div>`;
-      }
-      html += `</div>`;
-    }
 
     el.innerHTML = html;
     const bb = el.querySelector('#bkNowBtn'); if (bb) bb.addEventListener('click', exportData);
