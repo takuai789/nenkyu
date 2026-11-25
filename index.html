@@ -187,6 +187,11 @@
   .big small { font-size: 18px; font-weight: 600; margin-left: 4px; letter-spacing: 0; }
   .big-label { font-size: 13px; color: var(--secondary); margin-bottom: 6px; }
   .of { font-size: 13px; color: var(--secondary); text-align: right; line-height: 1.6; }
+  .meter-top .end-col { text-align: right; }
+  .meter-top .end-col .big.ok { color: var(--accent); }
+  .meter-top .end-col .big.short { color: #C2410C; }
+  .of-line { font-size: 12.5px; color: var(--secondary); margin: 8px 0 2px; line-height: 1.6; }
+  .of-line .warn { color: #C2410C; margin-left: 4px; }
   /* いまやること（ひとこと＋次の休みの候補日） */
   .advice .adv-t { font-size: 17px; font-weight: 800; margin-bottom: 4px; }
   .advice .adv-t.ok { color: #127A6A; } .advice .adv-t.warn { color: #C27A00; } .advice .adv-t.ng { color: #D12A20; }
@@ -570,7 +575,7 @@
 
   // ---------- バージョン ----------
   // リリースのたびに sw.js の CACHE 名とセットで上げる。
-  const APP_VERSION = '1.41.0';
+  const APP_VERSION = '1.42.0';
 
   // ---------- 日付・年度 ----------
   const pad = (n) => String(n).padStart(2, '0');
@@ -981,8 +986,12 @@
             <div class="big-label">いまの残り</div>
             <div class="big">${fmt(c.remain)}<small>日</small></div>
           </div>
-          <div class="of">年休 ${fmt(c.total)}日<br>目標残 ${fmt(c.target)}日</div>
+          <div class="end-col">
+            <div class="big-label">予定どおりなら年度末</div>
+            <div class="big ${c.projected >= c.target ? 'ok' : 'short'}">${fmt(c.projected)}<small>日</small></div>
+          </div>
         </div>
+        <div class="of-line">年休 ${fmt(c.total)}日・目標残 ${fmt(c.target)}日${c.projected < c.target ? `<span class="warn">（目標まで あと${fmt(c.target - c.projected)}日 たりない）</span>` : ''}${lostOf(c) >= 0.5 ? `<span class="warn">（うち${fmt(lostOf(c))}日は繰越できず消える）</span>` : ''}</div>
         ${rateHTML(c)}
         <div class="counts"><span>取得<b>${fmt(c.used)}</b></span><span>予定<b>${fmt(c.pending)}</b></span><span>まだ使える<b>${fmt(Math.max(0, c.free))}</b></span><span>年度末に残る<b>${fmt(c.projected)}</b>${lostOf(c) >= 0.5 ? `<em class="lost">うち${fmt(lostOf(c))}日消える</em>` : ''}</span></div>
         ${paceHTML(c)}
